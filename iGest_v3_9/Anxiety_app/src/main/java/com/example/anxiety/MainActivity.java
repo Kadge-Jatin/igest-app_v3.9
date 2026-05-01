@@ -158,20 +158,13 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private int    syncExpectedBytes = 0;
     private int    syncReceivedBytes = 0;
     private boolean liveBufferDropped = false;
-    /** Reusable formatter for wall-clock timestamps written to the flash CSV */
+    /** Reusable formatter for wall-clock timestamps written to the session CSV during flash sync */
     private final SimpleDateFormat syncWallTimeFmt =
             new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-    /** Reusable formatter for the Sync sub-directory name */
-    private final SimpleDateFormat syncDateFmt =
-            new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-    /** Reusable formatter for the flash CSV filename timestamp */
-    private final SimpleDateFormat syncFileTimeFmt =
-            new SimpleDateFormat("HHmmss", Locale.getDefault());
     /** Accumulates partial flash records across BLE chunks */
     private final  ByteArrayOutputStream syncReassemblyBuffer = new ByteArrayOutputStream(256);
     /** Buffers live-data rows that arrive while a flash sync is in progress */
     private final  ArrayDeque<Object[]>   liveDataBuffer       = new ArrayDeque<>();
-    private        CsvWriter              flashCsvWriter       = null;
 
 
     private int getMappedSensitivityThreshold() {
@@ -656,7 +649,6 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private void closeSessionCsv() {
         // If a flash sync was in progress, safely terminate it before closing the session file
         if (flashSyncState != FLASH_SYNC_IDLE) {
-            closeFlashCsv();
             for (Object[] row : liveDataBuffer) {
                 if (csvWriter != null) csvWriter.writeRow(row);
             }
@@ -1146,7 +1138,6 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     if (csvWriter != null) {
                         csvWriter.writeRow(new Object[]{8001.0, 0.0, wallStart, 0.0, 0.0});
                     }
-                    openFlashCsvFile();
                     Log.i("MainActivity", "Flash sync: START received");
                 }
                 break;
@@ -1197,24 +1188,25 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     }
 
     /**
-     * Parses one 9-byte flash record starting at {@code offset} in {@code buf}:
+     * Parses one 9-byte flash record starting at {@code offset} in {@code buf} and writes it
+     * directly to the session CSV (csvWriter) so it appears alongside live data:
      * bytes 0-3  float  accelMag  (LE)
      * bytes 4-5  uint16 timeDiff  (LE)
      * byte  6    uint8  status
-     * bytes 7-8  uint16 extra     (LE)
+     * bytes 7-8  uint16 extra     (LE)   → written in the 'observed' column
      */
     private void parseAndWriteFlashRecord(byte[] buf, int offset) {
-        if (flashCsvWriter == null) return;
+        if (csvWriter == null) return;
         float  accelMag = leBytesToFloat(buf, offset);
         int    timeDiff = leBytesToUint16(buf, offset + 4);
         int    status   = buf[offset + 6] & 0xFF;
         int    extra    = leBytesToUint16(buf, offset + 7);
         double accelMagRounded = Math.round(accelMag * 100.0) / 100.0;
         String wallTime = syncWallTimeFmt.format(new Date());
-        flashCsvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, status, extra, wallTime});
+        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, wallTime, status, extra});
     }
 
-    /** Called when the END marker arrives; closes flash CSV and dumps the live buffer. */
+    /** Called when the END marker arrives; writes the 8002 sentinel and dumps the live buffer to the session CSV. */
     private void finishFlashSync() {
         // Validate transfer completeness when the sender declared a byte count
         if (syncExpectedBytes > 0 && syncReceivedBytes < syncExpectedBytes) {
@@ -1230,7 +1222,6 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         if (csvWriter != null) {
             csvWriter.writeRow(new Object[]{8002.0, 0.0, wallEnd, 0.0, 0.0});
         }
-        closeFlashCsv();
 
         // Dump buffered live rows in arrival order
         for (Object[] row : liveDataBuffer) {
@@ -1247,27 +1238,6 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     Toast.LENGTH_LONG).show();
         } else {
             Toast.makeText(this, "Flash sync complete (" + syncReceivedBytes + " B)", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    /** Opens a fresh flash CSV in iGest: Anxiety Detection/Sync/<date>/ and writes the header. */
-    private void openFlashCsvFile() {
-        closeFlashCsv();
-        String date = syncDateFmt.format(new Date());
-        File dir = new File(getExternalFilesDir(null), DATA_ROOT_FOLDER + "/Sync/" + date);
-        if (!dir.exists()) dir.mkdirs();
-        String timestamp = syncFileTimeFmt.format(new Date());
-        String filename = "flash_" + currentSessionNumber + "_" + timestamp + ".csv";
-        File csvFile = new File(dir, filename);
-        flashCsvWriter = new CsvWriter(csvFile);
-        flashCsvWriter.writeRow(new Object[]{"accelMag", "timeDiff", "status", "extra", "wallTime"});
-        Log.i("MainActivity", "Opened flash CSV: " + csvFile.getAbsolutePath());
-    }
-
-    private void closeFlashCsv() {
-        if (flashCsvWriter != null) {
-            flashCsvWriter.close();
-            flashCsvWriter = null;
         }
     }
 
