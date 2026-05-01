@@ -37,8 +37,10 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -138,6 +140,38 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
     private final Handler observedTimerHandler = new Handler(Looper.getMainLooper());
     private Runnable observedTimerRunnable;
+
+    // --- Flash sync state machine ---
+    // Marker bytes must match the sender's #define values exactly
+    private static final byte[] SYNC_BLE_START = {(byte)0xAA, (byte)0xBB, (byte)0xCC, (byte)0xDD};
+    private static final byte[] SYNC_BLE_END   = {(byte)0xFF, (byte)0xEE, (byte)0xDD, (byte)0xCC};
+    /** Each flash record is 9 bytes: 4 accelMag + 2 timeDiff + 1 status + 2 extra */
+    private static final int FLASH_RECORD_SIZE = 9;
+    /** Max live rows buffered during a sync (15 min × 60 s × 100 Hz = 90 000) */
+    private static final int LIVE_BUFFER_MAX   = 90_000;
+
+    private static final int FLASH_SYNC_IDLE       = 0;
+    private static final int FLASH_SYNC_AWAIT_SIZE = 1;
+    private static final int FLASH_SYNC_ACTIVE     = 2;
+
+    private int    flashSyncState    = FLASH_SYNC_IDLE;
+    private int    syncExpectedBytes = 0;
+    private int    syncReceivedBytes = 0;
+    private boolean liveBufferDropped = false;
+    /** Reusable formatter for wall-clock timestamps written to the flash CSV */
+    private final SimpleDateFormat syncWallTimeFmt =
+            new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+    /** Reusable formatter for the Sync sub-directory name */
+    private final SimpleDateFormat syncDateFmt =
+            new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+    /** Reusable formatter for the flash CSV filename timestamp */
+    private final SimpleDateFormat syncFileTimeFmt =
+            new SimpleDateFormat("HHmmss", Locale.getDefault());
+    /** Accumulates partial flash records across BLE chunks */
+    private final  ByteArrayOutputStream syncReassemblyBuffer = new ByteArrayOutputStream(256);
+    /** Buffers live-data rows that arrive while a flash sync is in progress */
+    private final  ArrayDeque<Object[]>   liveDataBuffer       = new ArrayDeque<>();
+    private        CsvWriter              flashCsvWriter       = null;
 
 
     private int getMappedSensitivityThreshold() {
@@ -620,6 +654,16 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     }
 
     private void closeSessionCsv() {
+        // If a flash sync was in progress, safely terminate it before closing the session file
+        if (flashSyncState != FLASH_SYNC_IDLE) {
+            closeFlashCsv();
+            for (Object[] row : liveDataBuffer) {
+                if (csvWriter != null) csvWriter.writeRow(row);
+            }
+            liveDataBuffer.clear();
+            syncReassemblyBuffer.reset();
+            flashSyncState = FLASH_SYNC_IDLE;
+        }
 
         if (csvWriter != null) {
             csvWriter.close();
@@ -933,10 +977,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     double accelMagRounded = Math.round(accelMag * 100.0) / 100.0;
                     String timeString = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
 
-                    if (csvWriter != null) {
+                    if (csvWriter != null || flashSyncState != FLASH_SYNC_IDLE) {
                         // Column 3 stays real-world time, status becomes column 4
                         int observed = observedRecording ? 1 : 0;
-                        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, timeString, status, observed});
+                        writeOrBufferRow(new Object[]{accelMagRounded, timeDiff, timeString, status, observed});
                     }
 
                     if (i == 29) {
@@ -1018,23 +1062,14 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 int anxietyDataCount = leBytesToUint16(rawData, 4);
 
                 if (header == 0xABCD) {
-                    if (csvWriter != null) {
-//                        csvWriter.writeRow(new double[]{0, 0, 0, anxietyCount, anxietyDataCount});
-                        csvWriter.writeRow(new double[]{9999, 0, 0, 0, anxietyCount, anxietyDataCount}); // END marker style
-                    }
+                    writeOrBufferRow(new Object[]{9999.0, 0.0, 0.0, 0.0, (double)anxietyCount, (double)anxietyDataCount});
                     textViewAnxietyRaw.setText("Anxiety Marker: anxietyCount=" + anxietyCount + ", anxietyDataCount=" + anxietyDataCount);
                 } else if (header == 0x1234) {
-                    if (csvWriter != null) {
-//                        csvWriter.writeRow(new double[]{0, 0, 0, 0, 0});
-                        csvWriter.writeRow(new double[]{1234, 0, 0, 0, 0, 0});                           // ZERO marker style
-                    }
+                    writeOrBufferRow(new Object[]{1234.0, 0.0, 0.0, 0.0, 0.0, 0.0});
                     textViewAnxietyRaw.setText("Zero Marker");
 
                 } else if (header == 0x6789) {
-                    if (csvWriter != null) {
-//                        csvWriter.writeRow(new double[]{0, 0, 0, 0, 0});
-                        csvWriter.writeRow(new double[]{6789, 0, 0, 0, 0, 0});                           // START marker style
-                    }
+                    writeOrBufferRow(new Object[]{6789.0, 0.0, 0.0, 0.0, 0.0, 0.0});
                     textViewAnxietyRaw.setText("Start Marker");
                 } else {
                     textViewAnxietyRaw.setText("Unknown marker: header=0x" + Integer.toHexString(header));
@@ -1084,6 +1119,190 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         }
         anxietyTimeoutHandler.postDelayed(anxietyTimeoutRunnable, ANXIETY_STATUS_TIMEOUT_MS);
     }
+
+    // -------------------------------------------------------------------------
+    // Flash sync helpers
+    // -------------------------------------------------------------------------
+
+    @Override
+    public void onFlashDataReceived(byte[] chunk) {
+        if (chunk == null || chunk.length == 0) return;
+        runOnUiThread(() -> handleFlashChunk(chunk));
+    }
+
+    private void handleFlashChunk(byte[] chunk) {
+        switch (flashSyncState) {
+
+            case FLASH_SYNC_IDLE:
+                if (isMarker(chunk, SYNC_BLE_START)) {
+                    flashSyncState = FLASH_SYNC_AWAIT_SIZE;
+                    syncExpectedBytes = 0;
+                    syncReceivedBytes = 0;
+                    liveBufferDropped = false;
+                    syncReassemblyBuffer.reset();
+                    liveDataBuffer.clear();
+                    // Write SYNC_START sentinel to session CSV so analysts can locate the boundary
+                    String wallStart = syncWallTimeFmt.format(new Date());
+                    if (csvWriter != null) {
+                        csvWriter.writeRow(new Object[]{8001.0, 0.0, wallStart, 0.0, 0.0});
+                    }
+                    openFlashCsvFile();
+                    Log.i("MainActivity", "Flash sync: START received");
+                }
+                break;
+
+            case FLASH_SYNC_AWAIT_SIZE:
+                if (isMarker(chunk, SYNC_BLE_END)) {
+                    // Empty sync — nothing to transfer
+                    finishFlashSync();
+                } else if (chunk.length == 4) {
+                    // 4-byte little-endian uint32 = total bytes the sender will stream
+                    syncExpectedBytes = (chunk[0] & 0xFF)
+                            | ((chunk[1] & 0xFF) << 8)
+                            | ((chunk[2] & 0xFF) << 16)
+                            | ((chunk[3] & 0xFF) << 24);
+                    flashSyncState = FLASH_SYNC_ACTIVE;
+                    Log.i("MainActivity", "Flash sync: expecting " + syncExpectedBytes + " bytes");
+                } else {
+                    // Size packet not received; treat this chunk as data directly
+                    flashSyncState = FLASH_SYNC_ACTIVE;
+                    appendAndParseFlashChunk(chunk);
+                }
+                break;
+
+            case FLASH_SYNC_ACTIVE:
+                if (isMarker(chunk, SYNC_BLE_END)) {
+                    finishFlashSync();
+                } else {
+                    appendAndParseFlashChunk(chunk);
+                }
+                break;
+        }
+    }
+
+    /** Appends {@code chunk} to the reassembly buffer and drains complete 9-byte records. */
+    private void appendAndParseFlashChunk(byte[] chunk) {
+        syncReassemblyBuffer.write(chunk, 0, chunk.length);
+        byte[] buf = syncReassemblyBuffer.toByteArray();
+        int pos = 0;
+        while (pos + FLASH_RECORD_SIZE <= buf.length) {
+            parseAndWriteFlashRecord(buf, pos);
+            pos += FLASH_RECORD_SIZE;
+            syncReceivedBytes += FLASH_RECORD_SIZE;
+        }
+        syncReassemblyBuffer.reset();
+        if (pos < buf.length) {
+            syncReassemblyBuffer.write(buf, pos, buf.length - pos);
+        }
+    }
+
+    /**
+     * Parses one 9-byte flash record starting at {@code offset} in {@code buf}:
+     * bytes 0-3  float  accelMag  (LE)
+     * bytes 4-5  uint16 timeDiff  (LE)
+     * byte  6    uint8  status
+     * bytes 7-8  uint16 extra     (LE)
+     */
+    private void parseAndWriteFlashRecord(byte[] buf, int offset) {
+        if (flashCsvWriter == null) return;
+        float  accelMag = leBytesToFloat(buf, offset);
+        int    timeDiff = leBytesToUint16(buf, offset + 4);
+        int    status   = buf[offset + 6] & 0xFF;
+        int    extra    = leBytesToUint16(buf, offset + 7);
+        double accelMagRounded = Math.round(accelMag * 100.0) / 100.0;
+        String wallTime = syncWallTimeFmt.format(new Date());
+        flashCsvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, status, extra, wallTime});
+    }
+
+    /** Called when the END marker arrives; closes flash CSV and dumps the live buffer. */
+    private void finishFlashSync() {
+        // Validate transfer completeness when the sender declared a byte count
+        if (syncExpectedBytes > 0 && syncReceivedBytes < syncExpectedBytes) {
+            Log.w("MainActivity", "Flash sync incomplete: expected " + syncExpectedBytes
+                    + " bytes, received " + syncReceivedBytes + " bytes");
+            Toast.makeText(this,
+                    "Flash sync incomplete: received " + syncReceivedBytes + "/" + syncExpectedBytes + " B",
+                    Toast.LENGTH_LONG).show();
+        }
+
+        // Write SYNC_END sentinel to session CSV
+        String wallEnd = syncWallTimeFmt.format(new Date());
+        if (csvWriter != null) {
+            csvWriter.writeRow(new Object[]{8002.0, 0.0, wallEnd, 0.0, 0.0});
+        }
+        closeFlashCsv();
+
+        // Dump buffered live rows in arrival order
+        for (Object[] row : liveDataBuffer) {
+            if (csvWriter != null) csvWriter.writeRow(row);
+        }
+        liveDataBuffer.clear();
+        syncReassemblyBuffer.reset();
+        flashSyncState = FLASH_SYNC_IDLE;
+        Log.i("MainActivity", "Flash sync complete — received " + syncReceivedBytes + " bytes");
+
+        if (liveBufferDropped) {
+            Toast.makeText(this,
+                    "Flash sync complete (" + syncReceivedBytes + " B) — some live rows were dropped (buffer overflow)",
+                    Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this, "Flash sync complete (" + syncReceivedBytes + " B)", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Opens a fresh flash CSV in iGest: Anxiety Detection/Sync/<date>/ and writes the header. */
+    private void openFlashCsvFile() {
+        closeFlashCsv();
+        String date = syncDateFmt.format(new Date());
+        File dir = new File(getExternalFilesDir(null), DATA_ROOT_FOLDER + "/Sync/" + date);
+        if (!dir.exists()) dir.mkdirs();
+        String timestamp = syncFileTimeFmt.format(new Date());
+        String filename = "flash_" + currentSessionNumber + "_" + timestamp + ".csv";
+        File csvFile = new File(dir, filename);
+        flashCsvWriter = new CsvWriter(csvFile);
+        flashCsvWriter.writeRow(new Object[]{"accelMag", "timeDiff", "status", "extra", "wallTime"});
+        Log.i("MainActivity", "Opened flash CSV: " + csvFile.getAbsolutePath());
+    }
+
+    private void closeFlashCsv() {
+        if (flashCsvWriter != null) {
+            flashCsvWriter.close();
+            flashCsvWriter = null;
+        }
+    }
+
+    /**
+     * Writes {@code row} directly to the session CSV when not syncing, or queues it in the live
+     * buffer when a flash sync is in progress (so live data is preserved in time order).
+     */
+    private void writeOrBufferRow(Object[] row) {
+        if (flashSyncState != FLASH_SYNC_IDLE) {
+            if (liveDataBuffer.size() >= LIVE_BUFFER_MAX) {
+                liveDataBuffer.pollFirst(); // drop oldest row to cap memory usage
+                if (!liveBufferDropped) {
+                    liveBufferDropped = true;
+                    Log.w("MainActivity", "liveDataBuffer full, dropping oldest rows");
+                    Toast.makeText(this,
+                            "Warning: live data buffer full — oldest samples being dropped during flash sync",
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+            liveDataBuffer.addLast(row);
+        } else if (csvWriter != null) {
+            csvWriter.writeRow(row);
+        }
+    }
+
+    /** Returns {@code true} when {@code data} is exactly equal to the given 4-byte marker. */
+    private static boolean isMarker(byte[] data, byte[] marker) {
+        if (data.length != marker.length) return false;
+        for (int i = 0; i < marker.length; i++) {
+            if (data[i] != marker[i]) return false;
+        }
+        return true;
+    }
+
+    // -------------------------------------------------------------------------
 
     private static float leBytesToFloat(byte[] arr, int offset) {
         ByteBuffer bb = ByteBuffer.wrap(arr, offset, 4);
