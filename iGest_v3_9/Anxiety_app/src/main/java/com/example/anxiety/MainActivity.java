@@ -916,7 +916,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 else switchToNewDate(today);
             }
 
-            if (rawData.length == 210) {
+            if (rawData.length == 238) {
                 StringBuilder parsedData = new StringBuilder();
                 boolean anyPlotted = false;
                 boolean detected = false;
