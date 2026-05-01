@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="nav_item_highlight">#DDDDDD</color> <!-- Light grey, adjust as needed -->
+    <color name="primary">#1976D2</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="app_bg">#F3F6FB</color>
+    <color name="plot_bg">#222C36</color>
+    <color name="error_red">#F44336</color>
+</resources>

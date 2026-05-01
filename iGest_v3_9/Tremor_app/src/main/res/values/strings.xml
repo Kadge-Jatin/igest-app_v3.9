@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">iGest: Tremor Detection</string>
+    <string name="ble_status_off">Bluetooth is off</string>
+    <string name="ble_status_on">Bluetooth is on</string>
+    <string name="ble_status_connected">Connected to wearable</string>
+    <string name="user_avatar">User avatar</string>
+    <string name="open_profile">Open profile</string>
+    <string name="view_user_details">View user details</string>
+</resources>

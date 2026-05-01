@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.drawerlayout.widget.DrawerLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/drawerLayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true">
+
+    <!-- Main content with scroll -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#f5f5f5">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- App Title with BLE Status Circle on right -->
+            <RelativeLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp">
+
+                <!-- Hamburger Menu Icon (left) -->
+                <ImageView
+                    android:id="@+id/menuIcon"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:src="@drawable/ic_menu"
+                    android:layout_alignParentLeft="true"
+                    android:layout_alignParentStart="true"
+                    android:layout_centerVertical="true"
+                    android:contentDescription="Menu"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <!-- Logo (left, next to menu) -->
+                <ImageView
+                    android:id="@+id/appLogo"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:src="@drawable/create_logo_rbg"
+                    android:layout_toLeftOf="@+id/textViewHeading"
+                    android:contentDescription="App Logo"/>
+
+                <TextView
+                    android:id="@+id/textViewHeading"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Settings"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    android:textColor="#2196F3"
+                    android:gravity="center"
+                    android:layout_centerInParent="true"/>
+
+                <View
+                    android:id="@+id/bleStatusCircle"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_alignParentRight="true"
+                    android:layout_alignParentEnd="true"
+                    android:layout_centerVertical="true"
+                    android:background="@drawable/circle_red"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:contentDescription="BLE Status Indicator"/>
+            </RelativeLayout>
+
+            <!-- Current Mode Card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:background="@android:color/white"
+                android:padding="14dp"
+                android:elevation="2dp"
+                android:layout_marginBottom="12dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp">
+
+                <ImageView
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:src="@drawable/create_logo_rbg"
+                    android:contentDescription="Mode icon"
+                    android:layout_marginEnd="12dp"
+                    android:scaleType="centerCrop"/>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/currentModeTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Current iGest Mode"
+                        android:textSize="14sp"
+                        android:textColor="#666666"/>
+
+                    <TextView
+                        android:id="@+id/currentModeValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Not set"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="#222222"
+                        android:layout_marginTop="4dp"/>
+
+                    <TextView
+                        android:id="@+id/currentModeDesc"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text=" "
+                        android:textSize="13sp"
+                        android:textColor="#888888"
+                        android:layout_marginTop="6dp"
+                        android:maxLines="2"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Change iGest Mode row -->
+            <LinearLayout
+                android:id="@+id/changeModeRow"
+                android:layout_width="match_parent"
+                android:layout_height="56dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@android:color/white"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:elevation="1dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="Change iGest Mode"
+                    android:textSize="16sp"
+                    android:textColor="#000000"/>
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:src="@drawable/ic_chevron_right"
+                    android:contentDescription="Go"/>
+            </LinearLayout>
+
+            <!-- ===================== -->
+            <!-- Sensitivity (NEW ADD) -->
+            <!-- ===================== -->
+            <LinearLayout
+                android:id="@+id/sensitivityCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="@android:color/white"
+                android:padding="14dp"
+                android:elevation="2dp"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:layout_marginStart="2dp"
+                android:layout_marginEnd="2dp">
+
+                <TextView
+                    android:id="@+id/sensitivityTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sensitivity"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="#000000"/>
+
+                <TextView
+                    android:id="@+id/sensitivityCurrentLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Current sensitivity level set: 4"
+                    android:textSize="13sp"
+                    android:textColor="#666666"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginBottom="8dp"/>
+
+                <FrameLayout
+                    android:id="@+id/sensitivitySliderContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginBottom="6dp">
+
+                    <com.example.anxiety.SensitivityTrackView
+                        android:id="@+id/sensitivityTrack"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent" />
+
+                    <SeekBar
+                        android:id="@+id/sensitivitySeekBar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:max="9"
+                        android:enabled="false"
+                        android:splitTrack="false"
+                        android:background="@android:color/transparent"
+                        android:progressDrawable="@android:color/transparent"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:thumb="@drawable/sensitivity_thumb" />
+                </FrameLayout>
+
+
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="end"
+                    android:layout_marginTop="12dp">
+
+                    <Button
+                        android:id="@+id/sensitivityResetButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Reset" />
+
+                    <Button
+                        android:id="@+id/sensitivitySaveButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Save"
+                        android:layout_marginStart="12dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Navigation Drawer -->
+    <com.google.android.material.navigation.NavigationView
+        android:id="@+id/navigationView"
+        android:layout_width="300dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        app:headerLayout="@layout/drawer_header"
+        app:menu="@menu/drawer_menu"
+        app:itemBackground="@drawable/nav_item_background"/>
+</androidx.drawerlayout.widget.DrawerLayout>

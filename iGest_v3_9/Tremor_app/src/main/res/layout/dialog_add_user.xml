@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tvAddUserTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Add User"
+        android:textStyle="bold"
+        android:textSize="18sp"
+        android:paddingBottom="8dp" />
+
+    <EditText
+        android:id="@+id/etName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Name (required)"
+        android:inputType="textPersonName"
+        android:singleLine="true" />
+
+    <EditText
+        android:id="@+id/etPasswordNumeric"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Password (optional, 4 digits)"
+        android:inputType="numberPassword"
+        android:singleLine="true"
+        android:layout_marginTop="8dp"
+        android:maxLength="4" />
+
+    <EditText
+        android:id="@+id/etEmail"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Email ID (optional)"
+        android:inputType="textEmailAddress"
+        android:singleLine="true"
+        android:layout_marginTop="8dp" />
+</LinearLayout>

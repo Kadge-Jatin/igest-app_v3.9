@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="48dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="8dp"
+    android:paddingEnd="8dp">
+
+    <!-- selection marker (RadioButton for single choice). Make it non-clickable so ListView handles selection -->
+    <RadioButton
+        android:id="@+id/rbSelect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:clickable="false"
+        android:layout_marginEnd="8dp" />
+
+    <!-- Username (takes remaining space) -->
+    <TextView
+        android:id="@+id/tvUserNameRow"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textSize="16sp"
+        android:textColor="#222"
+        android:ellipsize="end"
+        android:singleLine="true"/>
+
+    <!-- Eye icon on the right: clicking opens details dialog -->
+    <ImageView
+        android:id="@+id/ivEye"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:padding="6dp"
+        android:src="@drawable/ic_visibility"
+        android:contentDescription="@string/view_user_details"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:scaleType="centerInside"
+        android:layout_marginStart="8dp" />
+</LinearLayout>

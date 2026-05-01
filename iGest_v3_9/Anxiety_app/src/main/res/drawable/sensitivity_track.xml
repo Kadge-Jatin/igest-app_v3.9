@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 1) Background ring/track (full width) -->
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="999dp"/>
+            <size android:height="14dp"/>
+            <solid android:color="#E6E6E6"/>
+        </shape>
+    </item>
+
+    <!-- 2) Progress part (same height, blue-ish) -->
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <corners android:radius="999dp"/>
+                <size android:height="14dp"/>
+                <solid android:color="#2196F3"/>
+            </shape>
+        </clip>
+    </item>
+
+    <!-- 3) Dots overlay (drawn inside ring) -->
+    <!-- We simulate 10 dots using a repeated layer-list row.
+         To control even/odd size/color, we place them manually. -->
+
+    <!-- Container to position dots centered vertically -->
+    <item>
+        <inset
+            android:insetTop="3dp"
+            android:insetBottom="3dp"
+            android:insetLeft="10dp"
+            android:insetRight="10dp">
+
+            <layer-list>
+
+                <!-- We position each dot using left insets as % is not supported in XML.
+                     So: this works best if SeekBar width is stable.
+                     If you need perfect alignment on all screen sizes, we should switch to a small custom view. -->
+
+                <!-- Dot 1 (odd small light) -->
+                <item android:left="0dp">
+                    <shape android:shape="oval">
+                        <size android:width="6dp" android:height="6dp"/>
+                        <solid android:color="#B0B0B0"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 2 (even big dark) -->
+                <item android:left="30dp">
+                    <shape android:shape="oval">
+                        <size android:width="8dp" android:height="8dp"/>
+                        <solid android:color="#444444"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 3 -->
+                <item android:left="60dp">
+                    <shape android:shape="oval">
+                        <size android:width="6dp" android:height="6dp"/>
+                        <solid android:color="#B0B0B0"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 4 -->
+                <item android:left="90dp">
+                    <shape android:shape="oval">
+                        <size android:width="8dp" android:height="8dp"/>
+                        <solid android:color="#444444"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 5 -->
+                <item android:left="120dp">
+                    <shape android:shape="oval">
+                        <size android:width="6dp" android:height="6dp"/>
+                        <solid android:color="#B0B0B0"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 6 -->
+                <item android:left="150dp">
+                    <shape android:shape="oval">
+                        <size android:width="8dp" android:height="8dp"/>
+                        <solid android:color="#444444"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 7 -->
+                <item android:left="180dp">
+                    <shape android:shape="oval">
+                        <size android:width="6dp" android:height="6dp"/>
+                        <solid android:color="#B0B0B0"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 8 -->
+                <item android:left="210dp">
+                    <shape android:shape="oval">
+                        <size android:width="8dp" android:height="8dp"/>
+                        <solid android:color="#444444"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 9 -->
+                <item android:left="240dp">
+                    <shape android:shape="oval">
+                        <size android:width="6dp" android:height="6dp"/>
+                        <solid android:color="#B0B0B0"/>
+                    </shape>
+                </item>
+
+                <!-- Dot 10 -->
+                <item android:left="270dp">
+                    <shape android:shape="oval">
+                        <size android:width="8dp" android:height="8dp"/>
+                        <solid android:color="#444444"/>
+                    </shape>
+                </item>
+
+            </layer-list>
+        </inset>
+    </item>
+
+</layer-list>

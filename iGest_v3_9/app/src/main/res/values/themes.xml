@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base — use Tremor's light base theme so the app is static (no DayNight) -->
+    <style name="Base.Theme.IGest_v3" parent="Theme.Material3.Light.NoActionBar">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/brand_dark_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <item name="colorPrimary">@color/brand_dark_blue</item>
+        <item name="colorOnPrimary">@color/on_brand_dark_blue</item>
+
+        <item name="colorSecondary">@color/brand_sky_blue</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="colorTertiary">@color/brand_yellow</item>
+        <item name="colorOnTertiary">@color/on_brand_yellow</item>
+
+        <item name="colorSurface">@color/surface_light</item>
+        <item name="android:colorBackground">@color/background_light</item>
+        <item name="colorOnBackground">@color/black</item>
+        <item name="colorOnSurface">@color/black</item>
+
+        <item name="materialButtonStyle">@style/Widget.BLEDataLogger.MaterialButton</item>
+    </style>
+
+    <!-- Keep the same public theme name Theme.IGest_v3 but inherit our Base -->
+    <style name="Theme.IGest_v3" parent="Base.Theme.IGest_v3" />
+
+    <!-- Button widget style copied from Tremor -->
+    <style name="Widget.BLEDataLogger.MaterialButton" parent="Widget.Material3.Button">
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <!-- CardView style used by Tremor -->
+    <style name="Widget.BLEDataLogger.CardView" parent="Widget.MaterialComponents.CardView">
+        <item name="cardElevation">4dp</item>
+        <item name="cardBackgroundColor">@color/card_background</item>
+    </style>
+
+</resources>

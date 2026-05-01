@@ -1,0 +1,39 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Base.Theme.BLEDataLogger" parent="Theme.Material3.Light.NoActionBar">
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@color/brand_dark_blue</item>
+        <item name="android:windowLightStatusBar">false</item>
+
+        <item name="colorPrimary">@color/brand_dark_blue</item>
+        <item name="colorOnPrimary">@color/on_brand_dark_blue</item>
+
+        <item name="colorSecondary">@color/brand_sky_blue</item>
+        <item name="colorOnSecondary">@color/white</item>
+
+        <item name="colorTertiary">@color/brand_yellow</item>
+        <item name="colorOnTertiary">@color/on_brand_yellow</item>
+
+        <item name="colorSurface">@color/surface_light</item>
+        <item name="android:colorBackground">@color/background_light</item>
+        <item name="colorOnBackground">@color/black</item>
+        <item name="colorOnSurface">@color/black</item>
+
+        <item name="materialButtonStyle">@style/Widget.BLEDataLogger.MaterialButton</item>
+    </style>
+
+    <style name="Theme.BLEDataLogger" parent="Base.Theme.BLEDataLogger" />
+
+    <style name="Widget.BLEDataLogger.MaterialButton" parent="Widget.Material3.Button">
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">12dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <!-- Use Widget.MaterialComponents.CardView as a broadly-compatible parent -->
+    <style name="Widget.BLEDataLogger.CardView" parent="Widget.MaterialComponents.CardView">
+        <item name="cardElevation">4dp</item>
+        <item name="cardBackgroundColor">@color/card_background</item>
+    </style>
+</resources>

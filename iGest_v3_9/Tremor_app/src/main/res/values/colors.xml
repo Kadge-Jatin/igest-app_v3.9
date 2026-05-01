@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Brand colors (kept as provided) -->
+    <color name="brand_dark_blue">#264693</color>  <!-- primary brand color (kept named as-is) -->
+    <color name="brand_sky_blue">#2196F3</color>   <!-- accent / name text (kept named as-is) -->
+    <color name="brand_yellow">#F9CF02</color>     <!-- highlight (kept named as-is) -->
+    <color name="brand_sky_blue_light">#E3F2FD</color>
+
+    <!-- Common UI colors (added so layouts reference color resources instead of hex) -->
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- Grays for surfaces / text -->
+    <color name="surface_light">#FFFFFFFF</color>
+    <color name="background_light">#FFFFFFFF</color>
+    <color name="card_background">#FFFFFFFF</color>
+    <color name="surface_alt">#FFF6F6F6</color> <!-- used for small raw backgrounds -->
+    <color name="light_grey">#FFEEEEEE</color>
+    <color name="mid_grey">#FF888888</color>
+    <color name="dark_grey">#FF333333</color>
+
+    <!-- Buttons -->
+    <color name="button_connect">#4CAF50</color> <!-- green -->
+    <color name="button_reset">#F44336</color>   <!-- red -->
+
+    <!-- Nav / highlight -->
+    <color name="nav_item_highlight">#DDDDDD</color>
+
+    <!-- Accessible contrast colors -->
+    <color name="on_brand_dark_blue">#FFFFFFFF</color>
+    <color name="on_brand_yellow">#FF000000</color>
+</resources>

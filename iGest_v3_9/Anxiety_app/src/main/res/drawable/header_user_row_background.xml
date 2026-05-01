@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Highlight when selected -->
+    <item android:drawable="@color/nav_item_highlight" android:state_selected="true"/>
+    <!-- Default transparent background -->
+    <item android:drawable="@android:color/transparent"/>
+</selector>
