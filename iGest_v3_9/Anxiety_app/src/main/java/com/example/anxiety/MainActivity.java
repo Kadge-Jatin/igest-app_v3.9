@@ -1119,6 +1119,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     @Override
     public void onFlashDataReceived(byte[] chunk) {
         if (chunk == null || chunk.length == 0) return;
+        // Log every raw flash chunk so the terminal shows that BLE is delivering data
+        Log.d("FlashUUID", "RX " + chunk.length + "B hex=" + bytesToHex(chunk));
         runOnUiThread(() -> handleFlashChunk(chunk));
     }
 
@@ -1137,13 +1139,18 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     String wallStart = syncWallTimeFmt.format(new Date());
                     if (csvWriter != null) {
                         csvWriter.writeRow(new Object[]{8001.0, 0.0, wallStart, 0.0, 0.0});
+                        Log.i("FlashUUID", "START marker received — sentinel 8001 written to CSV");
+                    } else {
+                        Log.e("FlashUUID", "START marker received but csvWriter is NULL — no CSV open");
                     }
-                    Log.i("MainActivity", "Flash sync: START received");
+                } else {
+                    Log.d("FlashUUID", "IDLE: ignoring non-START chunk hex=" + bytesToHex(chunk));
                 }
                 break;
 
             case FLASH_SYNC_AWAIT_SIZE:
                 if (isMarker(chunk, SYNC_BLE_END)) {
+                    Log.i("FlashUUID", "AWAIT_SIZE: END marker received (empty sync)");
                     // Empty sync — nothing to transfer
                     finishFlashSync();
                 } else if (chunk.length == 4) {
@@ -1153,9 +1160,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                             | ((chunk[2] & 0xFF) << 16)
                             | ((chunk[3] & 0xFF) << 24);
                     flashSyncState = FLASH_SYNC_ACTIVE;
-                    Log.i("MainActivity", "Flash sync: expecting " + syncExpectedBytes + " bytes");
+                    Log.i("FlashUUID", "AWAIT_SIZE: expecting " + syncExpectedBytes + " bytes");
                 } else {
                     // Size packet not received; treat this chunk as data directly
+                    Log.d("FlashUUID", "AWAIT_SIZE: no size packet, treating chunk as data len=" + chunk.length);
                     flashSyncState = FLASH_SYNC_ACTIVE;
                     appendAndParseFlashChunk(chunk);
                 }
@@ -1163,6 +1171,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
             case FLASH_SYNC_ACTIVE:
                 if (isMarker(chunk, SYNC_BLE_END)) {
+                    Log.i("FlashUUID", "ACTIVE: END marker received, receivedBytes=" + syncReceivedBytes);
                     finishFlashSync();
                 } else {
                     appendAndParseFlashChunk(chunk);
@@ -1196,13 +1205,19 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
      * bytes 7-8  uint16 extra     (LE)   → written in the 'observed' column
      */
     private void parseAndWriteFlashRecord(byte[] buf, int offset) {
-        if (csvWriter == null) return;
+        if (csvWriter == null) {
+            Log.e("FlashUUID", "parseAndWriteFlashRecord: csvWriter is NULL — record dropped! Flash data cannot be saved.");
+            return;
+        }
         float  accelMag = leBytesToFloat(buf, offset);
         int    timeDiff = leBytesToUint16(buf, offset + 4);
         int    status   = buf[offset + 6] & 0xFF;
         int    extra    = leBytesToUint16(buf, offset + 7);
         double accelMagRounded = Math.round(accelMag * 100.0) / 100.0;
         String wallTime = syncWallTimeFmt.format(new Date());
+        Log.d("FlashUUID", "Record #" + (syncReceivedBytes / FLASH_RECORD_SIZE + 1)
+                + " accel=" + accelMagRounded + " timeDiff=" + timeDiff
+                + " status=" + status + " extra=" + extra);
         csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, wallTime, status, extra});
     }
 
@@ -1210,7 +1225,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private void finishFlashSync() {
         // Validate transfer completeness when the sender declared a byte count
         if (syncExpectedBytes > 0 && syncReceivedBytes < syncExpectedBytes) {
-            Log.w("MainActivity", "Flash sync incomplete: expected " + syncExpectedBytes
+            Log.w("FlashUUID", "Sync incomplete: expected " + syncExpectedBytes
                     + " bytes, received " + syncReceivedBytes + " bytes");
             Toast.makeText(this,
                     "Flash sync incomplete: received " + syncReceivedBytes + "/" + syncExpectedBytes + " B",
@@ -1230,7 +1245,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         liveDataBuffer.clear();
         syncReassemblyBuffer.reset();
         flashSyncState = FLASH_SYNC_IDLE;
-        Log.i("MainActivity", "Flash sync complete — received " + syncReceivedBytes + " bytes");
+        Log.i("FlashUUID", "Sync complete — received " + syncReceivedBytes + " bytes");
 
         if (liveBufferDropped) {
             Toast.makeText(this,
@@ -1251,7 +1266,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 liveDataBuffer.pollFirst(); // drop oldest row to cap memory usage
                 if (!liveBufferDropped) {
                     liveBufferDropped = true;
-                    Log.w("MainActivity", "liveDataBuffer full, dropping oldest rows");
+                    Log.w("FlashUUID", "liveDataBuffer full, dropping oldest rows");
                     Toast.makeText(this,
                             "Warning: live data buffer full — oldest samples being dropped during flash sync",
                             Toast.LENGTH_LONG).show();
@@ -1281,6 +1296,13 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     }
     private static int leBytesToUint16(byte[] arr, int offset) {
         return (arr[offset] & 0xFF) | ((arr[offset+1] & 0xFF) << 8);
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null) return "null";
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02X ", b));
+        return sb.toString().trim();
     }
 
     private void setLabelValueColor(TextView textView, String label, String value, int color) {
