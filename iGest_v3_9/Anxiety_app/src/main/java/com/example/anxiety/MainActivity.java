@@ -1129,22 +1129,15 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
             case FLASH_SYNC_IDLE:
                 if (isMarker(chunk, SYNC_BLE_START)) {
-                    flashSyncState = FLASH_SYNC_AWAIT_SIZE;
-                    syncExpectedBytes = 0;
-                    syncReceivedBytes = 0;
-                    liveBufferDropped = false;
-                    syncReassemblyBuffer.reset();
-                    liveDataBuffer.clear();
-                    // Write SYNC_START sentinel to session CSV so analysts can locate the boundary
-                    String wallStart = syncWallTimeFmt.format(new Date());
-                    if (csvWriter != null) {
-                        csvWriter.writeRow(new Object[]{8001.0, 0.0, wallStart, 0.0, 0.0});
-                        Log.i("FlashUUID", "START marker received — sentinel 8001 written to CSV");
-                    } else {
-                        Log.e("FlashUUID", "START marker received but csvWriter is NULL — no CSV open");
-                    }
+                    // Explicit START marker packet received; wait for optional size packet next
+                    beginFlashSync(false);
+                } else if (!isMarker(chunk, SYNC_BLE_END)) {
+                    // Firmware sent data directly without a standalone START marker — auto-start the sync
+                    Log.i("FlashUUID", "IDLE: no START marker seen; auto-starting sync on first data chunk len=" + chunk.length);
+                    beginFlashSync(true);
+                    appendAndParseFlashChunk(chunk);
                 } else {
-                    Log.d("FlashUUID", "IDLE: ignoring non-START chunk hex=" + bytesToHex(chunk));
+                    Log.d("FlashUUID", "IDLE: ignoring spurious END marker");
                 }
                 break;
 
@@ -1177,6 +1170,26 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     appendAndParseFlashChunk(chunk);
                 }
                 break;
+        }
+    }
+
+    /**
+     * Initialises sync state and writes the 8001 sentinel row to the session CSV.
+     * @param skipSizePacket when true, the firmware sends no size packet so go straight to ACTIVE.
+     */
+    private void beginFlashSync(boolean skipSizePacket) {
+        flashSyncState = skipSizePacket ? FLASH_SYNC_ACTIVE : FLASH_SYNC_AWAIT_SIZE;
+        syncExpectedBytes = 0;
+        syncReceivedBytes = 0;
+        liveBufferDropped = false;
+        syncReassemblyBuffer.reset();
+        liveDataBuffer.clear();
+        String wallStart = syncWallTimeFmt.format(new Date());
+        if (csvWriter != null) {
+            csvWriter.writeRow(new Object[]{8001.0, 0.0, wallStart, 0.0, 0.0});
+            Log.i("FlashUUID", "Flash sync started (skipSizePacket=" + skipSizePacket + ") — sentinel 8001 written to CSV");
+        } else {
+            Log.e("FlashUUID", "Flash sync started but csvWriter is NULL — no CSV open, data will be lost!");
         }
     }
 
@@ -1278,9 +1291,9 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         }
     }
 
-    /** Returns {@code true} when {@code data} is exactly equal to the given 4-byte marker. */
+    /** Returns {@code true} when {@code data} starts with the given marker bytes. */
     private static boolean isMarker(byte[] data, byte[] marker) {
-        if (data.length != marker.length) return false;
+        if (data.length < marker.length) return false;
         for (int i = 0; i < marker.length; i++) {
             if (data[i] != marker[i]) return false;
         }
