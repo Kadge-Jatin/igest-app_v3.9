@@ -158,9 +158,6 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private int    syncExpectedBytes = 0;
     private int    syncReceivedBytes = 0;
     private boolean liveBufferDropped = false;
-    /** Reusable formatter for wall-clock timestamps written to the session CSV during flash sync */
-    private final SimpleDateFormat syncWallTimeFmt =
-            new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     /** Accumulates partial flash records across BLE chunks */
     private final  ByteArrayOutputStream syncReassemblyBuffer = new ByteArrayOutputStream(256);
     /** Buffers live-data rows that arrive while a flash sync is in progress */
@@ -1048,21 +1045,23 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 }
 
                 textViewAnxietyRaw.setText(parsedData.toString());
-            } else if (rawData.length == 6) {
+            } else if (rawData.length == 9) {
                 int header = leBytesToUint16(rawData, 0);
-                int anxietyCount = leBytesToUint16(rawData, 2);
-                int anxietyDataCount = leBytesToUint16(rawData, 4);
 
-                if (header == 0xABCD) {
-                    writeOrBufferRow(new Object[]{9999.0, 0.0, 0.0, 0.0, (double)anxietyCount, (double)anxietyDataCount});
+                if (header == 0x6789) {
+                    // START marker - no payload
+                    writeOrBufferRow(new Object[]{6789.0, 0.0, "0:00", 0.0, 0.0, 0.0});
+                    textViewAnxietyRaw.setText("Start Marker");
+                } else if (header == 0xABCD) {
+                    // END marker - with anxiety counts
+                    int anxietyCount = leBytesToUint16(rawData, 2);
+                    int anxietyDataCount = leBytesToUint16(rawData, 4);
+                    writeOrBufferRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount});
                     textViewAnxietyRaw.setText("Anxiety Marker: anxietyCount=" + anxietyCount + ", anxietyDataCount=" + anxietyDataCount);
                 } else if (header == 0x1234) {
-                    writeOrBufferRow(new Object[]{1234.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+                    // ZERO marker - no payload
+                    writeOrBufferRow(new Object[]{1234.0, 0.0, "0:00", 0.0, 0.0, 0.0});
                     textViewAnxietyRaw.setText("Zero Marker");
-
-                } else if (header == 0x6789) {
-                    writeOrBufferRow(new Object[]{6789.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-                    textViewAnxietyRaw.setText("Start Marker");
                 } else {
                     textViewAnxietyRaw.setText("Unknown marker: header=0x" + Integer.toHexString(header));
                 }
@@ -1119,7 +1118,25 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     @Override
     public void onFlashDataReceived(byte[] chunk) {
         if (chunk == null || chunk.length == 0) return;
-        // Log every raw flash chunk so the terminal shows that BLE is delivering data
+
+        // Check for live markers first, before flash sync processing
+        if (chunk.length == 9) {
+            int header = leBytesToUint16(chunk, 0);
+            if (header == 0x6789) {
+                runOnUiThread(() -> writeOrBufferRow(new Object[]{6789.0, 0.0, "0:00", 0.0, 0.0, 0.0}));
+                return;
+            } else if (header == 0x1234) {
+                runOnUiThread(() -> writeOrBufferRow(new Object[]{1234.0, 0.0, "0:00", 0.0, 0.0, 0.0}));
+                return;
+            } else if (header == 0xABCD) {
+                int anxietyCount = leBytesToUint16(chunk, 2);
+                int anxietyDataCount = leBytesToUint16(chunk, 4);
+                runOnUiThread(() -> writeOrBufferRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount}));
+                return;
+            }
+        }
+
+        // Continue with existing flash sync logic
         Log.d("FlashUUID", "RX " + chunk.length + "B hex=" + bytesToHex(chunk));
         runOnUiThread(() -> handleFlashChunk(chunk));
     }
@@ -1174,7 +1191,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     }
 
     /**
-     * Initialises sync state and writes the 8001 sentinel row to the session CSV.
+     * Initialises sync state and writes the 1111 sentinel row to the session CSV.
      * @param skipSizePacket when true, the firmware sends no size packet so go straight to ACTIVE.
      */
     private void beginFlashSync(boolean skipSizePacket) {
@@ -1184,10 +1201,9 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         liveBufferDropped = false;
         syncReassemblyBuffer.reset();
         liveDataBuffer.clear();
-        String wallStart = syncWallTimeFmt.format(new Date());
         if (csvWriter != null) {
-            csvWriter.writeRow(new Object[]{8001.0, 0.0, wallStart, 0.0, 0.0});
-            Log.i("FlashUUID", "Flash sync started (skipSizePacket=" + skipSizePacket + ") — sentinel 8001 written to CSV");
+            csvWriter.writeRow(new Object[]{1111.0, 0.0, "0:00", 0.0, 0.0});
+            Log.i("FlashUUID", "Flash sync started (skipSizePacket=" + skipSizePacket + ") — sentinel 1111 written to CSV");
         } else {
             Log.e("FlashUUID", "Flash sync started but csvWriter is NULL — no CSV open, data will be lost!");
         }
@@ -1246,9 +1262,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         }
 
         // Write SYNC_END sentinel to session CSV
-        String wallEnd = syncWallTimeFmt.format(new Date());
         if (csvWriter != null) {
-            csvWriter.writeRow(new Object[]{8002.0, 0.0, wallEnd, 0.0, 0.0});
+            csvWriter.writeRow(new Object[]{2222.0, 0.0, "0:00", 0.0, 0.0});
         }
 
         // Dump buffered live rows in arrival order
