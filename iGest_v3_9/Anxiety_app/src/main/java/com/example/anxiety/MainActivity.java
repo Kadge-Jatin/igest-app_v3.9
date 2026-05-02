@@ -72,6 +72,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private static final String PREF_LAST_CODE = "LastCode";
     private static final String NOTIF_CHANNEL_ID = "ble_status_channel";
     private static final int NOTIF_ID = 12345;
+    private static final String ANXIETY_NOTIF_CHANNEL_ID = "anxiety_alert_channel";
+    private static final int ANXIETY_NOTIF_ID = 12346;
 
     // Folder root for data. Change here if you want a different folder name.
     // NOTE: Colon (:) is allowed on Android filesystems but may cause issues when accessing from Windows.
@@ -162,6 +164,13 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private final  ByteArrayOutputStream syncReassemblyBuffer = new ByteArrayOutputStream(256);
     /** Buffers live-data rows that arrive while a flash sync is in progress */
     private final  ArrayDeque<Object[]>   liveDataBuffer       = new ArrayDeque<>();
+
+    /** Sentinel indicating no 0xABCD anxiety marker was seen in flash records during the current sync. */
+    private static final int FLASH_ANXIETY_COUNT_UNSET = -1;
+    /** Last anxiety count received from the device via a live 0xABCD marker (before disconnection). */
+    private int lastLiveAnxietyCount = 0;
+    /** Last anxiety count seen in flash records during the current sync; FLASH_ANXIETY_COUNT_UNSET means no 0xABCD record found yet. */
+    private int flashAnxietyCount = FLASH_ANXIETY_COUNT_UNSET;
 
 
     private int getMappedSensitivityThreshold() {
@@ -666,13 +675,20 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "BLE Status";
-            String description = "Bluetooth status notifications";
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(NOTIF_CHANNEL_ID, name, importance);
-            channel.setDescription(description);
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
+
+            // BLE status channel (default priority)
+            NotificationChannel bleChannel = new NotificationChannel(
+                    NOTIF_CHANNEL_ID, "BLE Status", NotificationManager.IMPORTANCE_DEFAULT);
+            bleChannel.setDescription("Bluetooth status notifications");
+            notificationManager.createNotificationChannel(bleChannel);
+
+            // Anxiety alert channel (high priority — sound + vibration)
+            NotificationChannel anxietyChannel = new NotificationChannel(
+                    ANXIETY_NOTIF_CHANNEL_ID, "Missed Anxiety Alerts", NotificationManager.IMPORTANCE_HIGH);
+            anxietyChannel.setDescription("Alerts for anxiety episodes missed during BLE disconnection");
+            anxietyChannel.enableVibration(true);
+            notificationManager.createNotificationChannel(anxietyChannel);
         }
     }
     private void showNotification(String message) {
@@ -697,6 +713,35 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.notify(NOTIF_ID, builder.build());
     }
+
+    private void showMissedAnxietyNotification(int missedCount) {
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        String message = missedCount + " anxiety episode" + (missedCount == 1 ? "" : "s")
+                + " occurred during disconnection";
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, ANXIETY_NOTIF_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_notify_error)
+                .setContentTitle("⚠️ Missed Anxiety Events")
+                .setContentText(message)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .setVibrate(new long[]{0, 300, 200, 300})
+                .setContentIntent(pendingIntent);
+
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        notificationManager.notify(ANXIETY_NOTIF_ID, builder.build());
+        Log.i("AnxietyAlert", "Missed anxiety notification fired: missedCount=" + missedCount);
+    }
+
     private void clearNotification() {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         notificationManager.cancel(NOTIF_ID);
@@ -1056,6 +1101,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     // END marker - with anxiety counts
                     int anxietyCount = leBytesToUint16(rawData, 2);
                     int anxietyDataCount = leBytesToUint16(rawData, 4);
+                    lastLiveAnxietyCount = anxietyCount;
                     writeOrBufferRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount});
                     textViewAnxietyRaw.setText("Anxiety Marker: anxietyCount=" + anxietyCount + ", anxietyDataCount=" + anxietyDataCount);
                 } else if (header == 0x1234) {
@@ -1180,6 +1226,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         syncExpectedBytes = 0;
         syncReceivedBytes = 0;
         liveBufferDropped = false;
+        flashAnxietyCount = FLASH_ANXIETY_COUNT_UNSET;
         syncReassemblyBuffer.reset();
         liveDataBuffer.clear();
         if (csvWriter != null) {
@@ -1227,6 +1274,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         } else if (header == 0xABCD) {
             int anxietyCount = leBytesToUint16(buf, offset + 2);
             int anxietyDataCount = leBytesToUint16(buf, offset + 4);
+            flashAnxietyCount = anxietyCount;
             csvWriter.writeRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount});
             return;
         } else if (header == 0x1234) {
@@ -1277,6 +1325,19 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                     Toast.LENGTH_LONG).show();
         } else {
             Toast.makeText(this, "Flash sync complete (" + syncReceivedBytes + " B)", Toast.LENGTH_SHORT).show();
+        }
+
+        // Notify teacher if anxiety episodes were missed during disconnection
+        if (flashAnxietyCount != FLASH_ANXIETY_COUNT_UNSET) {
+            int missedCount = flashAnxietyCount - lastLiveAnxietyCount;
+            if (missedCount > 0) {
+                Log.i("AnxietyAlert", "Missed anxiety notification: flashAnxietyCount=" + flashAnxietyCount
+                        + " lastLiveAnxietyCount=" + lastLiveAnxietyCount + " missed=" + missedCount);
+                showMissedAnxietyNotification(missedCount);
+            } else {
+                Log.i("AnxietyAlert", "No missed anxiety events (flashAnxietyCount=" + flashAnxietyCount
+                        + " lastLiveAnxietyCount=" + lastLiveAnxietyCount + ")");
+            }
         }
     }
 
