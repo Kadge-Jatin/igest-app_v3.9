@@ -1182,18 +1182,12 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         liveBufferDropped = false;
         syncReassemblyBuffer.reset();
         liveDataBuffer.clear();
-        if (csvWriter == null) {
-            // CSV not yet open (e.g. BLE flash notification arrived before onConnectionStateChanged
-            // ran on the UI thread). Open it now so the 1111 sentinel is never lost.
-            if (currentCsvDate == null) {
-                currentCsvDate = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
-                currentSessionNumber = 0;
-            }
-            startNewSessionCsv();
-            Log.w("FlashUUID", "Flash sync started but csvWriter was NULL — opened CSV now");
+        if (csvWriter != null) {
+            csvWriter.writeRow(new Object[]{1111.0, 0.0, "0:00", 0.0, 0.0, 0});
+            Log.i("FlashUUID", "Flash sync started (skipSizePacket=" + skipSizePacket + ") — sentinel 1111 written to CSV");
+        } else {
+            Log.e("FlashUUID", "Flash sync started but csvWriter is NULL — no CSV open, data will be lost!");
         }
-        csvWriter.writeRow(new Object[]{1111.0, 0.0, "0:00", 0.0, 0.0, 0});
-        Log.i("FlashUUID", "Flash sync started (skipSizePacket=" + skipSizePacket + ") — sentinel 1111 written to CSV");
     }
 
     /** Appends {@code chunk} to the reassembly buffer and drains complete 9-byte records. */
