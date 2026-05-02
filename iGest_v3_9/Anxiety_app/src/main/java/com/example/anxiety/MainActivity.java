@@ -1118,25 +1118,6 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     @Override
     public void onFlashDataReceived(byte[] chunk) {
         if (chunk == null || chunk.length == 0) return;
-
-        // Check for live markers first, before flash sync processing
-        if (chunk.length == 9) {
-            int header = leBytesToUint16(chunk, 0);
-            if (header == 0x6789) {
-                runOnUiThread(() -> writeOrBufferRow(new Object[]{6789.0, 0.0, "0:00", 0.0, 0.0, 0.0}));
-                return;
-            } else if (header == 0x1234) {
-                runOnUiThread(() -> writeOrBufferRow(new Object[]{1234.0, 0.0, "0:00", 0.0, 0.0, 0.0}));
-                return;
-            } else if (header == 0xABCD) {
-                int anxietyCount = leBytesToUint16(chunk, 2);
-                int anxietyDataCount = leBytesToUint16(chunk, 4);
-                runOnUiThread(() -> writeOrBufferRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount}));
-                return;
-            }
-        }
-
-        // Continue with existing flash sync logic
         Log.d("FlashUUID", "RX " + chunk.length + "B hex=" + bytesToHex(chunk));
         runOnUiThread(() -> handleFlashChunk(chunk));
     }
@@ -1202,7 +1183,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         syncReassemblyBuffer.reset();
         liveDataBuffer.clear();
         if (csvWriter != null) {
-            csvWriter.writeRow(new Object[]{1111.0, 0.0, "0:00", 0.0, 0.0});
+            csvWriter.writeRow(new Object[]{1111.0, 0.0, "0:00", 0.0, 0.0, 0});
             Log.i("FlashUUID", "Flash sync started (skipSizePacket=" + skipSizePacket + ") — sentinel 1111 written to CSV");
         } else {
             Log.e("FlashUUID", "Flash sync started but csvWriter is NULL — no CSV open, data will be lost!");
@@ -1238,6 +1219,21 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
             Log.e("FlashUUID", "parseAndWriteFlashRecord: csvWriter is NULL — record dropped! Flash data cannot be saved.");
             return;
         }
+        // Check if this record is a marker
+        int header = leBytesToUint16(buf, offset);
+        if (header == 0x6789) {
+            csvWriter.writeRow(new Object[]{6789.0, 0.0, "0:00", 0.0, 0.0, 0.0});
+            return;
+        } else if (header == 0xABCD) {
+            int anxietyCount = leBytesToUint16(buf, offset + 2);
+            int anxietyDataCount = leBytesToUint16(buf, offset + 4);
+            csvWriter.writeRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount});
+            return;
+        } else if (header == 0x1234) {
+            csvWriter.writeRow(new Object[]{1234.0, 0.0, "0:00", 0.0, 0.0, 0.0});
+            return;
+        }
+        // Not a marker — parse as normal data record
         float  accelMag = leBytesToFloat(buf, offset);
         int    timeDiff = leBytesToUint16(buf, offset + 4);
         int    rtcTime  = leBytesToUint16(buf, offset + 6);
@@ -1263,7 +1259,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
         // Write SYNC_END sentinel to session CSV
         if (csvWriter != null) {
-            csvWriter.writeRow(new Object[]{2222.0, 0.0, "0:00", 0.0, 0.0});
+            csvWriter.writeRow(new Object[]{2222.0, 0.0, "0:00", 0.0, 0.0, 0});
         }
 
         // Dump buffered live rows in arrival order
