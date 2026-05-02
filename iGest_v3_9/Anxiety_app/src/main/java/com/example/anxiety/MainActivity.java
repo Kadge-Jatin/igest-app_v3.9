@@ -169,6 +169,12 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     private static final int FLASH_ANXIETY_COUNT_UNSET = -1;
     /** Last anxiety count received from the device via a live 0xABCD marker (before disconnection). */
     private int lastLiveAnxietyCount = 0;
+    /**
+     * Snapshot of {@link #lastLiveAnxietyCount} taken at the moment the BLE connection is
+     * established, before any live 0xABCD packets can arrive and update the running count.
+     * Used as the baseline when computing missed anxiety events in {@link #finishFlashSync()}.
+     */
+    private int anxietyCountAtConnection = 0;
     /** Last anxiety count seen in flash records during the current sync; FLASH_ANXIETY_COUNT_UNSET means no 0xABCD record found yet. */
     private int flashAnxietyCount = FLASH_ANXIETY_COUNT_UNSET;
 
@@ -855,6 +861,11 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         runOnUiThread(() -> {
             isConnected = connected;
             if (connected) {
+                // Freeze the pre-connection anxiety baseline BEFORE any live 0xABCD packets can
+                // arrive and update lastLiveAnxietyCount. finishFlashSync() uses this snapshot so
+                // that anxiety events recorded in flash *during* the disconnection are not masked
+                // by the updated live count that arrives right after reconnection.
+                anxietyCountAtConnection = lastLiveAnxietyCount;
                 textViewStatus.setText("Status: Connected");
 //                buttonConnect.setEnabled(false);
                 setConnectButtonEnabledStyled(false);
@@ -1329,14 +1340,14 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
         // Notify teacher if anxiety episodes were missed during disconnection
         if (flashAnxietyCount != FLASH_ANXIETY_COUNT_UNSET) {
-            int missedCount = flashAnxietyCount - lastLiveAnxietyCount;
+            int missedCount = flashAnxietyCount - anxietyCountAtConnection;
             if (missedCount > 0) {
                 Log.i("AnxietyAlert", "Missed anxiety notification: flashAnxietyCount=" + flashAnxietyCount
-                        + " lastLiveAnxietyCount=" + lastLiveAnxietyCount + " missed=" + missedCount);
+                        + " anxietyCountAtConnection=" + anxietyCountAtConnection + " missed=" + missedCount);
                 showMissedAnxietyNotification(missedCount);
             } else {
                 Log.i("AnxietyAlert", "No missed anxiety events (flashAnxietyCount=" + flashAnxietyCount
-                        + " lastLiveAnxietyCount=" + lastLiveAnxietyCount + ")");
+                        + " anxietyCountAtConnection=" + anxietyCountAtConnection + ")");
             }
         }
     }
