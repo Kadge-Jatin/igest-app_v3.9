@@ -145,7 +145,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     // Marker bytes must match the sender's #define values exactly
     private static final byte[] SYNC_BLE_START = {(byte)0xAA, (byte)0xBB, (byte)0xCC, (byte)0xDD};
     private static final byte[] SYNC_BLE_END   = {(byte)0xFF, (byte)0xEE, (byte)0xDD, (byte)0xCC};
-    /** Each flash record is 9 bytes: 4 accelMag + 2 timeDiff + 1 status + 2 extra */
+    /** Each flash record is 9 bytes: 4 accelMag + 2 timeDiff + 2 rtcTime + 1 status */
     private static final int FLASH_RECORD_SIZE = 9;
     /** Max live rows buffered during a sync (15 min × 60 s × 100 Hz = 90 000) */
     private static final int LIVE_BUFFER_MAX   = 90_000;
@@ -1214,8 +1214,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
      * directly to the session CSV (csvWriter) so it appears alongside live data:
      * bytes 0-3  float  accelMag  (LE)
      * bytes 4-5  uint16 timeDiff  (LE)
-     * byte  6    uint8  status
-     * bytes 7-8  uint16 extra     (LE)   → written in the 'observed' column
+     * bytes 6-7  uint16 rtcTime   (LE)
+     * byte  8    uint8  status
      */
     private void parseAndWriteFlashRecord(byte[] buf, int offset) {
         if (csvWriter == null) {
@@ -1224,14 +1224,14 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         }
         float  accelMag = leBytesToFloat(buf, offset);
         int    timeDiff = leBytesToUint16(buf, offset + 4);
-        int    status   = buf[offset + 6] & 0xFF;
-        int    extra    = leBytesToUint16(buf, offset + 7);
+        int    rtcTime  = leBytesToUint16(buf, offset + 6);
+        int    status   = buf[offset + 8] & 0xFF;
         double accelMagRounded = Math.round(accelMag * 100.0) / 100.0;
         String wallTime = syncWallTimeFmt.format(new Date());
         Log.d("FlashUUID", "Record #" + (syncReceivedBytes / FLASH_RECORD_SIZE + 1)
                 + " accel=" + accelMagRounded + " timeDiff=" + timeDiff
-                + " status=" + status + " extra=" + extra);
-        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, wallTime, status, extra});
+                + " rtcTime=" + rtcTime + " status=" + status);
+        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, wallTime, rtcTime, status});
     }
 
     /** Called when the END marker arrives; writes the 8002 sentinel and dumps the live buffer to the session CSV. */
