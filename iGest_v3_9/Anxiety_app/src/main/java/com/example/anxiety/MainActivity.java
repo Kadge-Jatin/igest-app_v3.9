@@ -1214,7 +1214,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
      * directly to the session CSV (csvWriter) so it appears alongside live data:
      * bytes 0-3  float  accelMag  (LE)
      * bytes 4-5  uint16 timeDiff  (LE)
-     * bytes 6-7  uint16 rtcTime   (LE)
+     * bytes 6-7  uint16 rtcTime   (LE) — stored as compact MMSS, e.g. 523 → "5:23"
      * byte  8    uint8  status
      */
     private void parseAndWriteFlashRecord(byte[] buf, int offset) {
@@ -1227,11 +1227,11 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         int    rtcTime  = leBytesToUint16(buf, offset + 6);
         int    status   = buf[offset + 8] & 0xFF;
         double accelMagRounded = Math.round(accelMag * 100.0) / 100.0;
-        String wallTime = syncWallTimeFmt.format(new Date());
+        String timeStr  = String.format(Locale.US, "%d:%02d", rtcTime / 100, rtcTime % 100);
         Log.d("FlashUUID", "Record #" + (syncReceivedBytes / FLASH_RECORD_SIZE + 1)
                 + " accel=" + accelMagRounded + " timeDiff=" + timeDiff
-                + " rtcTime=" + rtcTime + " status=" + status);
-        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, wallTime, rtcTime, status});
+                + " rtcTime=" + timeStr + " status=" + status);
+        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, timeStr, status, ""});
     }
 
     /** Called when the END marker arrives; writes the 8002 sentinel and dumps the live buffer to the session CSV. */
