@@ -1291,18 +1291,29 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
             Log.e("FlashUUID", "parseAndWriteFlashRecord: csvWriter is NULL — record dropped! Flash data cannot be saved.");
             return;
         }
-        // Check if this record is a marker
+        // Check if this record is a marker.
+        // Guard: real marker records have zero padding in bytes 6-8 (rtcTime=0, status=0).
+        // A normal data record whose float low-bytes coincidentally match a marker header
+        // will almost always have a non-zero rtcTime in bytes 6-7, so this check
+        // prevents false-positive marker detection.
         int header = leBytesToUint16(buf, offset);
-        if (header == 0x6789) {
+        boolean trailingZeros = (buf[offset + 6] & 0xFF) == 0
+                && (buf[offset + 7] & 0xFF) == 0
+                && (buf[offset + 8] & 0xFF) == 0;
+        if (header == 0x6789 && trailingZeros
+                && (buf[offset + 2] & 0xFF) == 0 && (buf[offset + 3] & 0xFF) == 0
+                && (buf[offset + 4] & 0xFF) == 0 && (buf[offset + 5] & 0xFF) == 0) {
             csvWriter.writeRow(new Object[]{6789.0, 0.0, "0:00", 0.0, 0.0, 0.0});
             return;
-        } else if (header == 0xABCD) {
+        } else if (header == 0xABCD && trailingZeros) {
             int anxietyCount = leBytesToUint16(buf, offset + 2);
             int anxietyDataCount = leBytesToUint16(buf, offset + 4);
             flashAnxietyCount = anxietyCount;
             csvWriter.writeRow(new Object[]{9999.0, 0.0, "0:00", 0.0, (double)anxietyCount, (double)anxietyDataCount});
             return;
-        } else if (header == 0x1234) {
+        } else if (header == 0x1234 && trailingZeros
+                && (buf[offset + 2] & 0xFF) == 0 && (buf[offset + 3] & 0xFF) == 0
+                && (buf[offset + 4] & 0xFF) == 0 && (buf[offset + 5] & 0xFF) == 0) {
             csvWriter.writeRow(new Object[]{1234.0, 0.0, "0:00", 0.0, 0.0, 0.0});
             return;
         }
