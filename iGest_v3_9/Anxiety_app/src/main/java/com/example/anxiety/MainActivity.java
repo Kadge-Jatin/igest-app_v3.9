@@ -106,7 +106,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
 
     private Handler reconnectHandler = new Handler(Looper.getMainLooper());
     private Runnable reconnectRunnable;
-    private static final int RECONNECT_INTERVAL_MS = 5000;
+    private static final int RECONNECT_INTERVAL_MS = 60_000; // 1 minute
 
     private String currentCsvDate = null;
     private int currentSessionNumber = 0;
@@ -788,17 +788,24 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 } else if (state == BluetoothAdapter.STATE_ON) {
                     updateBleStatusCircle(true);
                     clearNotification();
-                    Toast.makeText(MainActivity.this, "Bluetooth is ON. Please connect again.", Toast.LENGTH_LONG).show();
                     setStatusDisconnected();
                     setAnxietyStatusDisconnected();
 //                    buttonConnect.setEnabled(!editTextCode.getText().toString().trim().isEmpty());
                     setConnectButtonEnabledStyled(!editTextCode.getText().toString().trim().isEmpty() && !isConnected);
+                    if (currentDeviceCode != null) {
+                        // Code is already saved — kick off the reconnect loop immediately
+                        startReconnection();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Bluetooth is ON. Please connect again.", Toast.LENGTH_LONG).show();
+                    }
                 }
             }
         }
     };
 
     private void startReconnection() {
+        // Cancel any pending callbacks first to avoid double-scheduling
+        stopReconnection();
         if (reconnectRunnable == null) {
             reconnectRunnable = new Runnable() {
                 @Override

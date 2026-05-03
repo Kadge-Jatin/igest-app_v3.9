@@ -87,13 +87,10 @@ public class BleManager {
             } catch (Throwable t) {
                 Log.w(TAG, "Error while disconnecting", t);
             }
-            try {
-                bluetoothGatt.close();
-            } catch (Throwable t) {
-                Log.w(TAG, "Error while closing gatt", t);
-            } finally {
-                bluetoothGatt = null;
-            }
+            // Do NOT call close() here — it is called from onConnectionStateChange(STATE_DISCONNECTED)
+            // so the GATT stack can finish tearing down asynchronously. Calling close() immediately
+            // here would silence the callback and prevent any subsequent connectGatt() from completing.
+            bluetoothGatt = null;
         }
     }
 
