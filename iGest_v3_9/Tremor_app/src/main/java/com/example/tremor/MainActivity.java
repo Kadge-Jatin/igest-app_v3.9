@@ -269,25 +269,16 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         accelChart = findViewById(R.id.accelChart);
         textViewNoLive = findViewById(R.id.textViewNoLive);
 
-        accelChart.setNoDataText("Turn ON the toggle to see active tremor events");
+        // TREMOR mode: data comes via Flash UUID — hide live streaming UI
+        View livePlotsHeader = findViewById(R.id.livePlotsHeader);
+        if (livePlotsHeader != null) livePlotsHeader.setVisibility(View.GONE);
+        accelChart.setVisibility(View.GONE);
+        textViewNoLive.setText("TREMOR Mode: Data recorded to flash, synced periodically");
+        textViewNoLive.setVisibility(View.VISIBLE);
 
-        setupChart(accelChart, Color.CYAN);
-
-        accelChart.getAxisLeft().setAxisMinimum(0f);
-        accelChart.getAxisLeft().setAxisMaximum(3000f);
-
-        toggleLivePlot.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            showLivePlot = isChecked;
-            if (!showLivePlot) {
-                clearPlots();
-                accelChart.setNoDataText("Turn ON the toggle to see active tremor events");
-                textViewNoLive.setVisibility(View.GONE);
-            } else {
-                accelChart.setNoDataText("No active Tremor event");
-                textViewNoLive.setVisibility(View.VISIBLE);
-                accelChart.invalidate();
-            }
-        });
+        // Hide Caretaker Observation panel — not used in TREMOR mode
+        View observationSection = findViewById(R.id.observationSection);
+        if (observationSection != null) observationSection.setVisibility(View.GONE);
 
         BluetoothManager bluetoothManager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         BluetoothAdapter bluetoothAdapter = bluetoothManager.getAdapter();
@@ -464,6 +455,12 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         textViewTremorData = findViewById(R.id.textViewTremorData);
         textViewTremorRaw = findViewById(R.id.textViewTremorRaw);
         bleStatusIcon = findViewById(R.id.bleStatusIcon);
+
+        // TREMOR mode initial status hint
+        if (textViewTremorStatus != null)
+            textViewTremorStatus.setText("Status: Flash Recording");
+        if (textViewTremorData != null)
+            textViewTremorData.setText("Data: Sync on reconnection");
 
         // Observation controls
         buttonObservedRecord = findViewById(R.id.buttonObservedRecord);
@@ -962,10 +959,15 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 } else if (state == BluetoothAdapter.STATE_ON) {
                     updateBleStatusIcon(true, false);
                     clearNotification();
-                    Toast.makeText(MainActivity.this, "Bluetooth is ON", Toast.LENGTH_LONG).show();
                     setStatusDisconnected();
                     setTremorStatusDisconnected();
                     if (buttonConnect != null) buttonConnect.setEnabled(!editTextCode.getText().toString().trim().isEmpty());
+                    if (currentDeviceCode != null) {
+                        // Code is already saved — kick off the reconnect loop immediately
+                        startReconnection();
+                    } else {
+                        Toast.makeText(MainActivity.this, "Bluetooth is ON. Please connect again.", Toast.LENGTH_LONG).show();
+                    }
                 }
             }
         }
@@ -1031,6 +1033,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
     }
 
     private void startReconnection() {
+        // Cancel any pending callbacks first to avoid double-scheduling
+        stopReconnection();
         if (reconnectRunnable == null) {
             reconnectRunnable = new Runnable() {
                 @Override
@@ -1042,7 +1046,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 }
             };
         }
-        reconnectHandler.postDelayed(reconnectRunnable, RECONNECT_INTERVAL_MS);
+        // Fire the first attempt immediately, then retry every RECONNECT_INTERVAL_MS
+        reconnectHandler.post(reconnectRunnable);
     }
 
     private void stopReconnection() {
@@ -1182,9 +1187,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 if (showLivePlot) {
                     clearPlots();
                     textViewNoLive.setVisibility(View.VISIBLE);
-                } else {
-                    textViewNoLive.setVisibility(View.GONE);
                 }
+                // textViewNoLive stays visible — it shows the TREMOR mode message
             }
         });
     }
