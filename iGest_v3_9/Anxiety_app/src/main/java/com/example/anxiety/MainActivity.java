@@ -774,6 +774,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR);
                 if (state == BluetoothAdapter.STATE_OFF) {
                     updateBleStatusCircle(false);
+                    isConnected = false;
                     if (bleManager != null) {
                         bleManager.disconnect();
                         bleManager = null;
@@ -817,7 +818,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 }
             };
         }
-        reconnectHandler.postDelayed(reconnectRunnable, RECONNECT_INTERVAL_MS);
+        // Fire the first attempt immediately, then retry every RECONNECT_INTERVAL_MS
+        reconnectHandler.post(reconnectRunnable);
     }
 
     private void stopReconnection() {
