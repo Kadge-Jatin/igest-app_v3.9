@@ -1493,7 +1493,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         Log.d("FlashUUID", "Record #" + (syncReceivedBytes / FLASH_RECORD_SIZE + 1)
                 + " accel=" + accelMagRounded + " timeDiff=" + timeDiff
                 + " rtcTime=" + timeStr + " status=" + status);
-        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, timeStr, status, ""});
+        csvWriter.writeRow(new Object[]{accelMagRounded, timeDiff, timeStr, status, 0});
     }
 
     /** Called when the END marker arrives; writes the 2222 sentinel and dumps the live buffer to the session CSV. */
