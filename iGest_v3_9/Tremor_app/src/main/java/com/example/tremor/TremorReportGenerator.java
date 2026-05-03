@@ -10,6 +10,7 @@ import android.graphics.Typeface;
 import android.graphics.pdf.PdfDocument;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.View;
 
 import com.github.mikephil.charting.charts.BarChart;
@@ -49,6 +50,8 @@ import java.util.Map;
  * and the callback is delivered back on the main thread.
  */
 public class TremorReportGenerator {
+
+    private static final String TAG = "TremorReportGenerator";
 
     // ── Public callback interface ──────────────────────────────────────────────
 
@@ -97,6 +100,15 @@ public class TremorReportGenerator {
     private static final int CHART_W = 900;
     private static final int CHART_H = 450;
 
+    // Histogram bin edges: centers at 3, 4, … 12 Hz; edges at 2.5, 3.5, … 12.5
+    private static final float HIST_BIN_OFFSET = 2.5f;  // first edge (= center 3 – 0.5)
+    private static final float HIST_X_MIN = 2.3f;       // chart x-axis minimum
+    private static final float HIST_X_MAX = 12.7f;      // chart x-axis maximum
+    private static final float HIST_DIVIDER_HZ = 5.5f;  // Parkinsonian / Essential divider
+
+    // Display version embedded in the PDF cover page
+    private static final String REPORT_APP_VERSION = "iGest v3.9";
+
     // ── Entry point ────────────────────────────────────────────────────────────
 
     /**
@@ -135,9 +147,12 @@ public class TremorReportGenerator {
                 loadDataForDateRange(fromDate, toDate, perUserDir);
 
         // 2. Prepare output directory and filename
-        File igestRoot = perUserDir.getParentFile() != null
-                ? perUserDir.getParentFile().getParentFile()
-                : perUserDir;
+        // Expected layout: <externalFilesDir>/iGest: Tremor Detection/Data/<username>/
+        //   perUserDir.getParentFile()           → .../Data/
+        //   perUserDir.getParentFile().getParentFile() → .../iGest: Tremor Detection/
+        File dataDir   = perUserDir.getParentFile();                        // .../Data/
+        File igestRoot = dataDir != null ? dataDir.getParentFile() : null; // .../iGest: Tremor Detection/
+        if (igestRoot == null) igestRoot = perUserDir; // fallback (should not happen)
         File reportsDir = new File(igestRoot, "Reports");
         reportsDir.mkdirs();
 
@@ -184,7 +199,8 @@ public class TremorReportGenerator {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
         Date from = sdf.parse(fromDate);
         Date to   = sdf.parse(toDate);
-        if (from == null || to == null) throw new Exception("Invalid date format");
+        if (from == null || to == null)
+            throw new Exception("Invalid date format: from='" + fromDate + "', to='" + toDate + "'");
 
         Calendar cal = Calendar.getInstance();
         cal.setTime(from);
@@ -230,9 +246,13 @@ public class TremorReportGenerator {
                         e.maxXp2pCm        = Double.parseDouble(p[7].trim());
                         e.grade            = p[8].trim();
                         events.add(e);
-                    } catch (Exception ignored) { /* skip malformed row */ }
+                    } catch (Exception ex) {
+                        Log.w(TAG, "Skipping malformed CSV row in " + f.getName() + ": " + line, ex);
+                    }
                 }
-            } catch (Exception ignored) { /* skip unreadable file */ }
+            } catch (Exception ex) {
+                Log.w(TAG, "Could not read CSV file: " + f.getAbsolutePath(), ex);
+            }
         }
         // Re-number events globally across all sessions for this date
         for (int i = 0; i < events.size(); i++) events.get(i).eventNum = i + 1;
@@ -337,11 +357,11 @@ public class TremorReportGenerator {
 
     /** Dominant Frequency Histogram (replicates Python Script 2). */
     private static Bitmap renderFrequencyHistogramChart(Context ctx, List<TremorEvent> events) {
-        // Bin centers 3..12, bin edges 2.5..12.5 in steps of 1.0
+        // Bin centers 3..12; bin edges 2.5..12.5 in steps of 1.0
+        // Bin index = floor(freq - HIST_BIN_OFFSET) where HIST_BIN_OFFSET = 2.5
         int[] counts = new int[10];
         for (TremorEvent e : events) {
-            double f = e.dominantFreqHz;
-            int bin = (int) Math.floor(f - 2.5); // bin 0 = [2.5,3.5), etc.
+            int bin = (int) Math.floor(e.dominantFreqHz - HIST_BIN_OFFSET);
             if (bin >= 0 && bin < 10) counts[bin]++;
         }
 
@@ -364,8 +384,8 @@ public class TremorReportGenerator {
         // Do NOT set a white background – we draw zones behind it
 
         chart.getXAxis().setPosition(XAxis.XAxisPosition.BOTTOM);
-        chart.getXAxis().setAxisMinimum(2.3f);
-        chart.getXAxis().setAxisMaximum(12.7f);
+        chart.getXAxis().setAxisMinimum(HIST_X_MIN);
+        chart.getXAxis().setAxisMaximum(HIST_X_MAX);
         chart.getXAxis().setGranularity(1f);
         chart.getXAxis().setGranularityEnabled(true);
         chart.getXAxis().setLabelCount(10, true);
@@ -373,8 +393,8 @@ public class TremorReportGenerator {
         chart.getXAxis().enableGridDashedLine(5f, 5f, 0f);
         chart.getXAxis().setGridColor(Color.argb(51, 0, 0, 0));
 
-        // Dashed vertical divider at 5.5 Hz
-        LimitLine divider = new LimitLine(5.5f, "");
+        // Dashed vertical divider at HIST_DIVIDER_HZ (5.5 Hz)
+        LimitLine divider = new LimitLine(HIST_DIVIDER_HZ, "");
         divider.setLineColor(Color.GRAY);
         divider.setLineWidth(1.0f);
         divider.enableDashedLine(10f, 5f, 0f);
@@ -416,12 +436,12 @@ public class TremorReportGenerator {
         float cRight  = vph.contentRight();
         float cTop    = vph.contentTop();
         float cBottom = vph.contentBottom();
-        float xRange  = 12.7f - 2.3f;
+        float xRange  = HIST_X_MAX - HIST_X_MIN;
         float ppu     = (cRight > cLeft) ? (cRight - cLeft) / xRange : 1f;
 
-        float x3   = cLeft + (3.0f  - 2.3f) * ppu;
-        float x5_5 = cLeft + (5.5f  - 2.3f) * ppu;
-        float x12  = cLeft + (12.0f - 2.3f) * ppu;
+        float x3   = cLeft + (3.0f         - HIST_X_MIN) * ppu;
+        float x5_5 = cLeft + (HIST_DIVIDER_HZ - HIST_X_MIN) * ppu;
+        float x12  = cLeft + (12.0f        - HIST_X_MIN) * ppu;
 
         // Pass 2: compose final bitmap → white → zones → chart (chart has transparent bg)
         Bitmap bmp = Bitmap.createBitmap(CHART_W, CHART_H, Bitmap.Config.ARGB_8888);
@@ -603,7 +623,7 @@ public class TremorReportGenerator {
                 "Patient / User   :  " + username,
                 "Report Generated :  " + genTime,
                 "Report Period    :  " + periodStr,
-                "App Version      :  iGest v3.9"
+                "App Version      :  " + REPORT_APP_VERSION
         };
         for (String line : infoLines) {
             w.y = drawLine(cv, line, ML, w.y, pBody);
