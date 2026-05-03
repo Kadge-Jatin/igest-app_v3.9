@@ -30,6 +30,7 @@ public class BleManager {
 
     private static final String IMU_CHAR_UUID = "19B10001-E8F2-537E-4F6C-D104768A1214";
     private static final String TIME_CHAR_UUID = "19B20001-E8F2-537E-4F6C-D104768A1214";
+    private static final String FLASH_DATA_CHAR_UUID = "19B30001-E8F2-537E-4F6C-D104768A1214";
     private static final String CLIENT_CHARACTERISTIC_CONFIG_UUID = "00002902-0000-1000-8000-00805f9b34fb";
 
     private Context context;
@@ -38,6 +39,8 @@ public class BleManager {
     private BluetoothGatt bluetoothGatt;
     private BluetoothGattCharacteristic imuCharacteristic;
     private BluetoothGattCharacteristic timeCharacteristic;
+    private BluetoothGattCharacteristic flashDataCharacteristic;
+    private final java.util.ArrayDeque<BluetoothGattCharacteristic> notificationQueue = new java.util.ArrayDeque<>();
 
     private Handler timeHandler;
     private Runnable timeRunnable;
@@ -46,6 +49,7 @@ public class BleManager {
     public interface BleCallback {
         void onConnectionStateChanged(boolean connected);
         void onDataReceived(byte[] rawData, String debugString);
+        void onFlashDataReceived(byte[] chunk);
         void onError(String error);
     }
 
@@ -239,6 +243,8 @@ public class BleManager {
                 stopTimeUpdates();
                 imuCharacteristic = null;
                 timeCharacteristic = null;
+                flashDataCharacteristic = null;
+                notificationQueue.clear();
                 if (bluetoothGatt != null) {
                     try {
                         bluetoothGatt.close();
@@ -270,9 +276,11 @@ public class BleManager {
 
                 UUID imuUuid = UUID.fromString(IMU_CHAR_UUID);
                 UUID timeUuid = UUID.fromString(TIME_CHAR_UUID);
+                UUID flashUuid = UUID.fromString(FLASH_DATA_CHAR_UUID);
 
                 imuCharacteristic = null;
                 timeCharacteristic = null;
+                flashDataCharacteristic = null;
 
                 if (gatt == null) {
                     callback.onError("GATT is null during service discovery");
@@ -288,6 +296,10 @@ public class BleManager {
                         if (characteristic.getUuid().equals(timeUuid)) {
                             timeCharacteristic = characteristic;
                             Log.d(TAG, "Found TIME characteristic");
+                        }
+                        if (characteristic.getUuid().equals(flashUuid)) {
+                            flashDataCharacteristic = characteristic;
+                            Log.d(TAG, "Found FLASH_DATA characteristic");
                         }
                     }
                 }
@@ -314,54 +326,118 @@ public class BleManager {
         @Override
         public void onCharacteristicChanged(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic) {
             byte[] data = characteristic != null ? characteristic.getValue() : null;
-            if (data != null) {
-                String debugStr = bytesToHex(data);
-                // Forward all data to callback and let higher-level code decide how to handle lengths
-                callback.onDataReceived(data, debugStr);
+            if (data == null) {
+                Log.e(TAG, "Received null characteristic data");
+                callback.onError("Received null characteristic data");
+                return;
+            }
+            if (characteristic.getUuid().equals(UUID.fromString(FLASH_DATA_CHAR_UUID))) {
+                callback.onFlashDataReceived(data);
             } else {
-                String msg = "Received null characteristic data";
-                Log.e(TAG, msg);
-                callback.onError(msg);
+                callback.onDataReceived(data, bytesToHex(data));
             }
         }
 
         @Override
         public void onDescriptorWrite(BluetoothGatt gatt, BluetoothGattDescriptor descriptor, int status) {
+            UUID writtenUuid = (descriptor != null && descriptor.getCharacteristic() != null)
+                    ? descriptor.getCharacteristic().getUuid() : null;
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                Log.d(TAG, "Notifications enabled successfully");
-                callback.onConnectionStateChanged(true);
-                startTimeUpdates();
+                Log.d(TAG, "Descriptor write OK for " + writtenUuid);
+                if (notificationQueue.isEmpty()) {
+                    callback.onConnectionStateChanged(true);
+                    startTimeUpdates();
+                } else {
+                    enableNextNotification();
+                }
             } else {
-                callback.onError("Failed to enable notifications: " + status);
+                Log.e(TAG, "Descriptor write failed status=" + status + " for " + writtenUuid);
+                if (writtenUuid != null && writtenUuid.equals(UUID.fromString(IMU_CHAR_UUID))) {
+                    callback.onError("Failed to enable notifications: " + status);
+                } else {
+                    // Flash notification failed — non-critical, proceed without it
+                    Log.w(TAG, "Flash descriptor write failed, continuing without flash notifications");
+                    notificationQueue.clear();
+                    callback.onConnectionStateChanged(true);
+                    startTimeUpdates();
+                }
             }
         }
     };
 
     private void enableNotifications() {
-        if (imuCharacteristic == null || bluetoothGatt == null) {
-            callback.onError("Characteristic or GATT is null");
+        notificationQueue.clear();
+        if (imuCharacteristic != null) notificationQueue.add(imuCharacteristic);
+        if (flashDataCharacteristic != null) notificationQueue.add(flashDataCharacteristic);
+
+        if (notificationQueue.isEmpty()) {
+            callback.onError("IMU characteristic not found");
+            return;
+        }
+        enableNextNotification();
+    }
+
+    private void enableNextNotification() {
+        if (bluetoothGatt == null) return;
+
+        BluetoothGattCharacteristic ch = notificationQueue.poll();
+        if (ch == null) {
+            // Called with an empty queue — nothing more to enable, no action needed here;
+            // finalisation is handled by onDescriptorWrite after the last successful write.
             return;
         }
 
-        boolean success = bluetoothGatt.setCharacteristicNotification(imuCharacteristic, true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "Missing BLUETOOTH_CONNECT permission, skipping notification for " + ch.getUuid());
+                proceedOrFinalize();
+                return;
+            }
+        }
+
+        boolean success = bluetoothGatt.setCharacteristicNotification(ch, true);
         if (!success) {
-            callback.onError("Failed to set characteristic notification");
+            Log.w(TAG, "setCharacteristicNotification failed for " + ch.getUuid());
+            if (ch.getUuid().equals(UUID.fromString(IMU_CHAR_UUID))) {
+                callback.onError("Failed to set characteristic notification");
+                return;
+            }
+            proceedOrFinalize();
             return;
         }
 
         UUID configUuid = UUID.fromString(CLIENT_CHARACTERISTIC_CONFIG_UUID);
-        BluetoothGattDescriptor descriptor = imuCharacteristic.getDescriptor(configUuid);
-
+        BluetoothGattDescriptor descriptor = ch.getDescriptor(configUuid);
         if (descriptor == null) {
-            callback.onError("Configuration descriptor not found");
+            Log.w(TAG, "No CCC descriptor for " + ch.getUuid());
+            if (ch.getUuid().equals(UUID.fromString(IMU_CHAR_UUID))) {
+                callback.onError("Configuration descriptor not found");
+                return;
+            }
+            proceedOrFinalize();
             return;
         }
 
         descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
         success = bluetoothGatt.writeDescriptor(descriptor);
-
         if (!success) {
-            callback.onError("Failed to write descriptor");
+            Log.w(TAG, "writeDescriptor failed for " + ch.getUuid());
+            if (ch.getUuid().equals(UUID.fromString(IMU_CHAR_UUID))) {
+                callback.onError("Failed to write descriptor");
+                return;
+            }
+            proceedOrFinalize();
+        }
+        // On success, wait for onDescriptorWrite to continue the chain
+    }
+
+    /** Enables the next queued characteristic, or finalises setup if the queue is exhausted. */
+    private void proceedOrFinalize() {
+        if (notificationQueue.isEmpty()) {
+            callback.onConnectionStateChanged(true);
+            startTimeUpdates();
+        } else {
+            enableNextNotification();
         }
     }
 

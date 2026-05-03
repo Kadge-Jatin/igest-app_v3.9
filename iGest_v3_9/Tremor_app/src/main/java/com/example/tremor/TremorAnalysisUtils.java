@@ -58,10 +58,10 @@ public class TremorAnalysisUtils {
 
                 String[] tokens = line.trim().split("[,\\t]+");
 
-                // We ONLY treat rows with exactly 5 columns as sample rows:
-                // accelMag,timeDiff,time,status,observed
-                // Marker rows in your app have 6 columns -> they must be ignored/boundary.
-                if (tokens.length != 5) {
+                // We treat rows with 4 or 5 columns as sample rows:
+                // accelMag,timeDiff,time,status[,observed]
+                // Marker rows or rows with other column counts are treated as event boundaries.
+                if (tokens.length < 4 || tokens.length > 5) {
 
                     // marker rows or malformed -> treat as boundary
                     if (!currentSamples.isEmpty()) {
