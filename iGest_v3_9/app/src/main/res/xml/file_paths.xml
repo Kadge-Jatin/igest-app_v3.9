@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Covers the entire getExternalFilesDir(null) tree, which includes the
+         iGest: Tremor Detection/Reports/ folder where PDFs are saved. -->
+    <external-files-path
+        name="igest_reports"
+        path="." />
+</paths>

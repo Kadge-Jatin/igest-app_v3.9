@@ -16,13 +16,19 @@ import android.graphics.Color;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.ArrayAdapter;
+import android.widget.Toast;
+import android.net.Uri;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
 import com.google.android.material.button.MaterialButtonToggleGroup;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.navigation.NavigationView;
 import com.google.android.material.datepicker.MaterialDatePicker;
 import com.google.android.material.datepicker.CalendarConstraints;
@@ -137,6 +143,10 @@ public class DataAnalysisActivity extends AppCompatActivity {
         barChart = findViewById(R.id.barChart);
         barChart.setVisibility(View.GONE);
         lineChart.setVisibility(View.GONE); // (already present)
+
+        // Export PDF FAB
+        FloatingActionButton exportFab = findViewById(R.id.fabExportPdf);
+        exportFab.setOnClickListener(v -> showExportDialog());
 
         // Set Raw selected by default
         toggleRawAnalysedGroup.check(R.id.buttonRaw);
@@ -889,6 +899,184 @@ public class DataAnalysisActivity extends AppCompatActivity {
             drawerUsername.setText(current == null || current.isEmpty() ? "User" : current);
         } catch (Exception e) {
 //            Log.w("ActivityName", "updateDrawerHeaderUsernameFromPrefs failed", e);
+        }
+    }
+
+    // ── Export PDF ──────────────────────────────────────────────────────────────
+
+    /** Show the date-range selection dialog for PDF export. */
+    private void showExportDialog() {
+        int dp8 = Math.round(8 * getResources().getDisplayMetrics().density);
+        int dp16 = dp8 * 2;
+        int dp24 = dp8 * 3;
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp24, dp16, dp24, dp8);
+
+        // "From" label
+        TextView tvFromLabel = new TextView(this);
+        tvFromLabel.setText("From Date (required)");
+        tvFromLabel.setTextSize(13f);
+        tvFromLabel.setTextColor(Color.parseColor("#757575"));
+        layout.addView(tvFromLabel);
+
+        Button btnFrom = new Button(this);
+        btnFrom.setText("Select From Date");
+        LinearLayout.LayoutParams lpBtn = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpBtn.setMargins(0, dp8, 0, dp16);
+        btnFrom.setLayoutParams(lpBtn);
+        layout.addView(btnFrom);
+
+        // "To" label
+        TextView tvToLabel = new TextView(this);
+        tvToLabel.setText("To Date (optional – leave blank for single date)");
+        tvToLabel.setTextSize(13f);
+        tvToLabel.setTextColor(Color.parseColor("#757575"));
+        layout.addView(tvToLabel);
+
+        Button btnTo = new Button(this);
+        btnTo.setText("Not selected (single date)");
+        LinearLayout.LayoutParams lpBtn2 = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpBtn2.setMargins(0, dp8, 0, dp16);
+        btnTo.setLayoutParams(lpBtn2);
+        layout.addView(btnTo);
+
+        // Generate button (disabled until From chosen)
+        Button btnGenerate = new Button(this);
+        btnGenerate.setText("Generate Report");
+        btnGenerate.setEnabled(false);
+        btnGenerate.setBackgroundColor(Color.parseColor("#E0E0E0"));
+        btnGenerate.setTextColor(Color.parseColor("#9E9E9E"));
+        LinearLayout.LayoutParams lpGen = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lpGen.setMargins(0, dp8, 0, 0);
+        btnGenerate.setLayoutParams(lpGen);
+        layout.addView(btnGenerate);
+
+        SimpleDateFormat sdfDialog = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+        final String[] fromDate = {null};
+        final String[] toDate = {null};
+
+        AlertDialog exportDialog = new MaterialAlertDialogBuilder(this)
+                .setTitle("Export PDF Report")
+                .setView(layout)
+                .setNegativeButton("Cancel", null)
+                .create();
+
+        btnFrom.setOnClickListener(v -> {
+            MaterialDatePicker<Long> picker = MaterialDatePicker.Builder.datePicker()
+                    .setTitleText("Select From Date")
+                    .setSelection(MaterialDatePicker.todayInUtcMilliseconds())
+                    .build();
+            picker.addOnPositiveButtonClickListener(sel -> {
+                fromDate[0] = sdfDialog.format(new Date(sel));
+                btnFrom.setText(fromDate[0]);
+                btnGenerate.setEnabled(true);
+                btnGenerate.setBackgroundColor(Color.parseColor("#1565C0"));
+                btnGenerate.setTextColor(Color.WHITE);
+            });
+            picker.show(getSupportFragmentManager(), "EXPORT_FROM_DATE");
+        });
+
+        btnTo.setOnClickListener(v -> {
+            MaterialDatePicker<Long> picker = MaterialDatePicker.Builder.datePicker()
+                    .setTitleText("Select To Date (optional)")
+                    .setSelection(MaterialDatePicker.todayInUtcMilliseconds())
+                    .build();
+            picker.addOnPositiveButtonClickListener(sel -> {
+                toDate[0] = sdfDialog.format(new Date(sel));
+                btnTo.setText(toDate[0]);
+            });
+            picker.show(getSupportFragmentManager(), "EXPORT_TO_DATE");
+        });
+
+        btnGenerate.setOnClickListener(v -> {
+            if (fromDate[0] == null) return;
+            String from = fromDate[0];
+            String to = toDate[0] != null ? toDate[0] : from;
+            if (to.compareTo(from) < 0) {
+                Toast.makeText(this, "'To' date cannot be before 'From' date", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            exportDialog.dismiss();
+            startPdfGeneration(from, to);
+        });
+
+        exportDialog.show();
+    }
+
+    /** Show loading dialog, call TremorReportGenerator on a background thread. */
+    private void startPdfGeneration(String fromDate, String toDate) {
+        AlertDialog progressDialog = new MaterialAlertDialogBuilder(this)
+                .setTitle("Generating Report")
+                .setMessage("Please wait, building PDF…")
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+
+        String username = getSharedPreferences("UserPrefs", MODE_PRIVATE)
+                .getString("current_user", "User");
+
+        TremorReportGenerator.generate(
+                this,
+                username,
+                fromDate,
+                toDate,
+                getPerUserDataRoot(),
+                new TremorReportGenerator.ReportCallback() {
+                    @Override
+                    public void onSuccess(File pdfFile) {
+                        progressDialog.dismiss();
+                        showPdfResultDialog(pdfFile);
+                    }
+
+                    @Override
+                    public void onError(String errorMessage) {
+                        progressDialog.dismiss();
+                        Toast.makeText(DataAnalysisActivity.this,
+                                "Report error: " + errorMessage, Toast.LENGTH_LONG).show();
+                    }
+                });
+    }
+
+    /** Show Open / Share / OK dialog after PDF is ready. */
+    private void showPdfResultDialog(File pdfFile) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle("Report Ready")
+                .setMessage(pdfFile.getName())
+                .setPositiveButton("Open", (d, w) -> openPdf(pdfFile))
+                .setNeutralButton("Share", (d, w) -> sharePdf(pdfFile))
+                .setNegativeButton("OK", null)
+                .show();
+    }
+
+    private void openPdf(File pdfFile) {
+        try {
+            Uri uri = FileProvider.getUriForFile(
+                    this, "com.example.igest_v3.fileprovider", pdfFile);
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(uri, "application/pdf");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(intent, "Open PDF"));
+        } catch (Exception e) {
+            Toast.makeText(this, "No PDF viewer found", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void sharePdf(File pdfFile) {
+        try {
+            Uri uri = FileProvider.getUriForFile(
+                    this, "com.example.igest_v3.fileprovider", pdfFile);
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("application/pdf");
+            intent.putExtra(Intent.EXTRA_STREAM, uri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(intent, "Share Report"));
+        } catch (Exception e) {
+            Toast.makeText(this, "Unable to share file", Toast.LENGTH_SHORT).show();
         }
     }
 }

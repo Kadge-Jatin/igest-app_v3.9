@@ -7,7 +7,11 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true">
 
-    <!-- Main content with scroll -->
+    <!-- Main content with scroll + export FAB overlay -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -243,6 +247,20 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <!-- Export PDF Floating Action Button -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fabExportPdf"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:src="@android:drawable/ic_menu_share"
+        android:contentDescription="Export PDF Report"
+        app:backgroundTint="#1565C0"
+        app:tint="@android:color/white" />
+
+    </FrameLayout>
 
     <!-- Navigation Drawer -->
     <com.google.android.material.navigation.NavigationView

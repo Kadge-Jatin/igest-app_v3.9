@@ -48,6 +48,17 @@
             android:name="com.example.tremor.TremorBootService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location" />
+
+        <!-- FileProvider for sharing generated PDF reports -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.example.igest_v3.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
