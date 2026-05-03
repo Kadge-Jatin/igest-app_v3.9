@@ -585,6 +585,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
             permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                permissions.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
 
         if (!permissions.isEmpty()) {
             ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), REQUEST_PERMISSIONS);
@@ -717,6 +721,11 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 .setContentIntent(pendingIntent);
 
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            Log.w("Notification", "POST_NOTIFICATIONS not granted — skipping BLE status notification");
+            return;
+        }
         notificationManager.notify(NOTIF_ID, builder.build());
     }
 
@@ -744,6 +753,11 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
                 .setContentIntent(pendingIntent);
 
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            Log.w("AnxietyAlert", "POST_NOTIFICATIONS not granted — skipping missed anxiety notification");
+            return;
+        }
         notificationManager.notify(ANXIETY_NOTIF_ID, builder.build());
         Log.i("AnxietyAlert", "Missed anxiety notification fired: missedCount=" + missedCount);
     }
