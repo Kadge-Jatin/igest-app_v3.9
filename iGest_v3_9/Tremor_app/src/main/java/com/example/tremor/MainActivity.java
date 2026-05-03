@@ -298,12 +298,15 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         registerReceiver(bluetoothStateReceiver, new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED));
 
         // register closeSessionReceiver for actions from UserSettingsActivity
+        // RECEIVER_NOT_EXPORTED: these actions are only ever sent from within this app
         try {
             IntentFilter f = new IntentFilter();
             f.addAction(ACTION_CLOSE_SESSION);
             f.addAction(ACTION_START_NEW_SESSION);
             f.addAction(ACTION_PERFORM_RESET);
-            registerReceiver(closeSessionReceiver, f);
+            androidx.core.content.ContextCompat.registerReceiver(
+                    this, closeSessionReceiver, f,
+                    androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
         } catch (Exception ignored) {}
 
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
