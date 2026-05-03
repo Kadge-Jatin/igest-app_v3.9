@@ -270,8 +270,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.BleCal
         textViewNoLive = findViewById(R.id.textViewNoLive);
 
         // TREMOR mode: data comes via Flash UUID — hide live streaming UI
-        View livePlotsHeader = findViewById(R.id.livePlotsHeader);
-        if (livePlotsHeader != null) livePlotsHeader.setVisibility(View.GONE);
+        toggleLivePlot.setVisibility(View.GONE);
         accelChart.setVisibility(View.GONE);
         textViewNoLive.setText("TREMOR Mode: Data recorded to flash, synced periodically");
         textViewNoLive.setVisibility(View.VISIBLE);
