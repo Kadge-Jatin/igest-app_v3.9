@@ -392,7 +392,7 @@ public class TremorReportGenerator {
         chart.getXAxis().setAxisMaximum(HIST_X_MAX);
         chart.getXAxis().setGranularity(1f);
         chart.getXAxis().setGranularityEnabled(true);
-        chart.getXAxis().setLabelCount(10, true);
+        // Do NOT use setLabelCount – let granularity place ticks at each integer (3,4,...,12)
         // Vertical dotted grid lines, alpha ≈ 0.2
         chart.getXAxis().enableGridDashedLine(5f, 5f, 0f);
         chart.getXAxis().setGridColor(Color.argb(51, 0, 0, 0));
@@ -412,13 +412,13 @@ public class TremorReportGenerator {
         chart.getAxisLeft().setGranularityEnabled(true);
         chart.getAxisRight().setEnabled(false);
 
-        // Custom legend: Parkinsonian (orange) + Essential (green)
+        // Custom legend: 3–5 Hz (orange) + 6–12 Hz (green)
         LegendEntry parkEntry = new LegendEntry();
-        parkEntry.label = "Parkinsonian (3\u20135 Hz)";
+        parkEntry.label = "3\u20135 Hz";
         parkEntry.formColor = Color.parseColor("#FF6600");
 
         LegendEntry essEntry = new LegendEntry();
-        essEntry.label = "Essential Tremor (6\u201312 Hz)";
+        essEntry.label = "6\u201312 Hz";
         essEntry.formColor = Color.parseColor("#388E3C");
 
         chart.getLegend().setCustom(new LegendEntry[]{parkEntry, essEntry});
@@ -443,26 +443,24 @@ public class TremorReportGenerator {
         float xRange  = HIST_X_MAX - HIST_X_MIN;
         float ppu     = (cRight > cLeft) ? (cRight - cLeft) / xRange : 1f;
 
-        float x3   = cLeft + (3.0f         - HIST_X_MIN) * ppu;
         float x5_5 = cLeft + (HIST_DIVIDER_HZ - HIST_X_MIN) * ppu;
-        float x12  = cLeft + (12.0f        - HIST_X_MIN) * ppu;
 
         // Pass 2: compose final bitmap → white → zones → chart (chart has transparent bg)
         Bitmap bmp = Bitmap.createBitmap(CHART_W, CHART_H, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bmp);
         canvas.drawColor(Color.WHITE);
 
-        // Parkinsonian zone: orange, alpha ≈ 10 % (26/255)
+        // 3–5 Hz zone: orange, spans from plot-area left edge to the divider
         Paint parkPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         parkPaint.setStyle(Paint.Style.FILL);
         parkPaint.setColor(Color.argb(26, 255, 152, 0));
-        canvas.drawRect(x3, cTop, x5_5, cBottom, parkPaint);
+        canvas.drawRect(cLeft, cTop, x5_5, cBottom, parkPaint);
 
-        // Essential zone: green, alpha ≈ 10 %
+        // 6–12 Hz zone: green, spans from the divider to plot-area right edge
         Paint essPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         essPaint.setStyle(Paint.Style.FILL);
         essPaint.setColor(Color.argb(26, 56, 142, 60));
-        canvas.drawRect(x5_5, cTop, x12, cBottom, essPaint);
+        canvas.drawRect(x5_5, cTop, cRight, cBottom, essPaint);
 
         // Composite the chart (transparent background) on top; zones show through
         canvas.drawBitmap(chartBmp, 0, 0, null);
@@ -514,12 +512,11 @@ public class TremorReportGenerator {
         chart.getXAxis().enableGridDashedLine(10f, 5f, 0f);
         chart.getXAxis().setGridColor(Color.argb(77, 0, 0, 0)); // alpha ≈ 0.3
 
-        // Y-axis: grade names
+        // Y-axis: grade names — always show all 4 ticks at 0,1,2,3
         chart.getAxisLeft().setAxisMinimum(-0.6f);
         chart.getAxisLeft().setAxisMaximum(3.6f);
         chart.getAxisLeft().setGranularity(1f);
         chart.getAxisLeft().setGranularityEnabled(true);
-        chart.getAxisLeft().setLabelCount(4, true);
         chart.getAxisLeft().setValueFormatter(new ValueFormatter() {
             @Override public String getFormattedValue(float value) {
                 int v = Math.round(value);
@@ -540,6 +537,7 @@ public class TremorReportGenerator {
         }
         chart.getLegend().setCustom(legendEntries);
         chart.getLegend().setEnabled(true);
+        chart.getLegend().setHorizontalAlignment(Legend.LegendHorizontalAlignment.CENTER);
 
         return chartToBitmap(chart, Color.WHITE);
     }
@@ -738,18 +736,31 @@ public class TremorReportGenerator {
     }
 
     private static void drawSectionLabel(PdfWriter w, String label) {
-        w.ensureSpace(30);
-        Paint p = makePaint(true, 12f, Color.BLACK, Paint.Align.LEFT);
-        p.setUnderlineText(true);
-        w.y = drawLine(w.canvas, label, ML, w.y, p);
-        w.y += 6;
+        final float barW    = 4f;          // left accent bar width
+        final float padV    = 5f;          // vertical padding inside the strip
+        final float padH    = 10f;         // horizontal text indent from bar
+        Paint txtPaint = makePaint(true, 13f, Color.parseColor("#1565C0"), Paint.Align.LEFT);
+        float stripH   = lineH(txtPaint) + padV * 2;
+        w.ensureSpace(stripH + 10);
+        Canvas cv = w.canvas;
+        float top = w.y;
+        // Light-blue tinted background strip
+        cv.drawRect(ML, top, PAGE_W - MR, top + stripH, makeFill(Color.parseColor("#E3F2FD")));
+        // Bold blue left accent bar
+        cv.drawRect(ML, top, ML + barW, top + stripH, makeFill(Color.parseColor("#1565C0")));
+        // Label text, vertically centred in the strip
+        float ty = top + padV;
+        drawLine(cv, label, ML + barW + padH, ty, txtPaint);
+        w.y = top + stripH + 8;
     }
 
     private static void drawSummaryStats(PdfWriter w, DayStats stats) {
-        Paint body = makePaint(false, 12f, Color.BLACK, Paint.Align.LEFT);
-        float lh = lineH(body) + 4;
-        float pad = 10f;
-        float boxH = pad * 2 + lh * 5 + 4;
+        Paint label  = makePaint(false, 12f, Color.parseColor("#37474F"), Paint.Align.LEFT);
+        Paint colon  = makePaint(false, 12f, Color.parseColor("#37474F"), Paint.Align.LEFT);
+        Paint value  = makePaint(true,  12f, Color.BLACK,                 Paint.Align.LEFT);
+        float lh  = lineH(label) + 5f;
+        float pad = 12f;
+        float boxH = pad * 2 + lh * 5;
 
         w.ensureSpace(boxH + 16);
         Canvas cv = w.canvas;
@@ -758,19 +769,32 @@ public class TremorReportGenerator {
         cv.drawRect(ML, top, PAGE_W - MR, top + boxH, makeFill(Color.parseColor("#FAFAFA")));
         cv.drawRect(ML, top, PAGE_W - MR, top + boxH, makeStroke(1f, Color.parseColor("#BDBDBD")));
 
-        float ty = top + pad;
-        String[] rows = {
-                String.format("Total Tremor Events              :  %d", stats.totalEvents),
-                String.format("Mean Dominant Frequency          :  %.2f Hz", stats.meanDominantFreqHz),
-                String.format("Avg. Median Displacement         :  %.2f cm", stats.avgMedianDisplacementCm),
-                String.format("Events in 3\u20135 Hz (Parkinsonian)  :  %d  (%.1f%%)",
-                        stats.countParkinsonian, stats.percentParkinsonian),
-                String.format("Events in 6\u201312 Hz (Essential)    :  %d  (%.1f%%)",
-                        stats.countEssential, stats.percentEssential)
+        // Fixed colon column – wide enough for the longest label
+        float colonX = ML + pad + 185f;
+        float valueX = colonX + 14f;
+
+        String[] labels = {
+                "Total Tremor Events",
+                "Mean Dominant Frequency",
+                "Avg. Median Displacement",
+                "Events in 3\u20135 Hz",
+                "Events in 6\u201312 Hz"
         };
-        for (String row : rows) {
-            ty = drawLine(cv, row, ML + pad, ty, body);
-            ty += 4;
+        String[] values = {
+                String.valueOf(stats.totalEvents),
+                String.format(Locale.US, "%.2f Hz", stats.meanDominantFreqHz),
+                String.format(Locale.US, "%.2f cm", stats.avgMedianDisplacementCm),
+                String.format(Locale.US, "%d  (%.1f%%)", stats.countParkinsonian, stats.percentParkinsonian),
+                String.format(Locale.US, "%d  (%.1f%%)", stats.countEssential,    stats.percentEssential)
+        };
+
+        float ty = top + pad;
+        for (int i = 0; i < labels.length; i++) {
+            float by = ty - label.ascent(); // baseline
+            cv.drawText(labels[i], ML + pad, by, label);
+            cv.drawText(":", colonX, by, colon);
+            cv.drawText(values[i], valueX, by, value);
+            ty += lh;
         }
         w.y = top + boxH + 16;
     }
@@ -788,10 +812,10 @@ public class TremorReportGenerator {
     }
 
     private static void drawEventDetailsTable(PdfWriter w, List<TremorEvent> events) {
-        // Column widths (spec: 30,80,80,70,110,70 = 440), scaled to CONTENT_W
-        float scale = (float) CONTENT_W / 440f;
-        final float[] cw = {30*scale, 80*scale, 80*scale, 70*scale, 110*scale, 70*scale};
-        final String[] headers = {"#", "Start Time", "End Time", "Freq (Hz)", "Median Disp (cm)", "Grade"};
+        // Columns: #(30), Start Time(80), Freq Hz(70), Max Disp cm(90), Grade(70) = 340
+        float scale = (float) CONTENT_W / 340f;
+        final float[] cw = {30*scale, 80*scale, 70*scale, 90*scale, 70*scale};
+        final String[] headers = {"#", "Start Time", "Freq (Hz)", "Max Disp (cm)", "Grade"};
         final float rowH = 18f;
         final float startX = ML;
 
@@ -845,15 +869,14 @@ public class TremorReportGenerator {
             String[] cells = {
                     String.valueOf(e.eventNum),
                     e.startTime,
-                    e.endTime,
-                    String.format("%.2f", e.dominantFreqHz),
-                    String.format("%.3f", e.medianXp2pCm),
+                    String.format(Locale.US, "%.2f", e.dominantFreqHz),
+                    String.format(Locale.US, "%.3f", e.maxXp2pCm),
                     e.grade
             };
             float tx = startX + 4;
             for (int c = 0; c < cells.length; c++) {
                 float by = w.y + rowH / 2f - (rowTxt.ascent() + rowTxt.descent()) / 2f;
-                if (c == 5) {
+                if (c == 4) {
                     Paint gp = makePaint(false, 10f, gradeColors[Math.max(0, gradeIndex(e.grade))],
                             Paint.Align.LEFT);
                     cv.drawText(cells[c], tx, by, gp);
@@ -869,12 +892,13 @@ public class TremorReportGenerator {
 
     private static void drawObservations(PdfWriter w, DayStats stats, String date, String username) {
         String obs = String.format(Locale.US,
-                "A total of %d tremor events were recorded on %s for %s. " +
+                "A total of %d tremor event%s were recorded on %s for %s. " +
                 "The mean dominant tremor frequency was %.2f Hz. " +
-                "%d event%s (%.1f%%) fell in the Parkinsonian frequency range (3\u20135 Hz), " +
-                "and %d event%s (%.1f%%) fell in the Essential Tremor range (6\u201312 Hz). " +
+                "%d event%s (%.1f%%) fell in the 3\u20135 Hz range, " +
+                "and %d event%s (%.1f%%) fell in the 6\u201312 Hz range. " +
                 "Grade breakdown \u2013 Normal: %d, Mild: %d, Moderate: %d, Severe: %d.",
-                stats.totalEvents, formatDate(date), username,
+                stats.totalEvents, stats.totalEvents == 1 ? "" : "s",
+                formatDate(date), username,
                 stats.meanDominantFreqHz,
                 stats.countParkinsonian, stats.countParkinsonian == 1 ? "" : "s", stats.percentParkinsonian,
                 stats.countEssential,    stats.countEssential    == 1 ? "" : "s", stats.percentEssential,
