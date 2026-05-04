@@ -101,8 +101,9 @@ public class TremorReportGenerator {
     private static final int CONTENT_W = PAGE_W - ML - MR;
 
     // Off-screen chart canvas size
-    private static final int CHART_W = 900;
-    private static final int CHART_H = 450;
+    private static final int CHART_W        = 900;
+    private static final int CHART_H        = 450;   // timeline
+    private static final int CHART_H_COMPACT = 420;  // grade + freq charts – keeps §①②③ on one page
 
     // Histogram bin edges: centers at 3, 4, … 12 Hz; edges at 2.5, 3.5, … 12.5
     private static final float HIST_BIN_OFFSET = 2.5f;  // first edge (= center 3 – 0.5)
@@ -356,7 +357,7 @@ public class TremorReportGenerator {
         chart.getAxisLeft().setGranularityEnabled(true);
         chart.getAxisRight().setEnabled(false);
 
-        return chartToBitmap(chart, Color.WHITE);
+        return chartToBitmap(chart, Color.WHITE, CHART_W, CHART_H_COMPACT);
     }
 
     /** Dominant Frequency Histogram (replicates Python Script 2). */
@@ -392,7 +393,16 @@ public class TremorReportGenerator {
         chart.getXAxis().setAxisMaximum(HIST_X_MAX);
         chart.getXAxis().setGranularity(1f);
         chart.getXAxis().setGranularityEnabled(true);
-        // Do NOT use setLabelCount – let granularity place ticks at each integer (3,4,...,12)
+        // Reduce text size so MPAndroidChart doesn't auto-skip odd labels
+        chart.getXAxis().setTextSize(9f);
+        // Explicit integer formatter: shows exactly 3,4,5,…,12; suppresses fractional positions
+        chart.getXAxis().setValueFormatter(new ValueFormatter() {
+            @Override public String getFormattedValue(float value) {
+                int iv = Math.round(value);
+                return (Math.abs(value - iv) < 0.05f && iv >= 3 && iv <= 12)
+                        ? String.valueOf(iv) : "";
+            }
+        });
         // Vertical dotted grid lines, alpha ≈ 0.2
         chart.getXAxis().enableGridDashedLine(5f, 5f, 0f);
         chart.getXAxis().setGridColor(Color.argb(51, 0, 0, 0));
@@ -423,15 +433,17 @@ public class TremorReportGenerator {
 
         chart.getLegend().setCustom(new LegendEntry[]{parkEntry, essEntry});
         chart.getLegend().setEnabled(true);
+        chart.getLegend().setHorizontalAlignment(Legend.LegendHorizontalAlignment.CENTER);
+        chart.getLegend().setTextSize(9f);
 
-        // Measure and layout the chart
+        // Measure and layout the chart using compact height
         chart.measure(
                 View.MeasureSpec.makeMeasureSpec(CHART_W, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(CHART_H, View.MeasureSpec.EXACTLY));
-        chart.layout(0, 0, CHART_W, CHART_H);
+                View.MeasureSpec.makeMeasureSpec(CHART_H_COMPACT, View.MeasureSpec.EXACTLY));
+        chart.layout(0, 0, CHART_W, CHART_H_COMPACT);
 
         // Pass 1: draw chart to a transparent bitmap so onDraw() populates the viewport.
-        Bitmap chartBmp = Bitmap.createBitmap(CHART_W, CHART_H, Bitmap.Config.ARGB_8888);
+        Bitmap chartBmp = Bitmap.createBitmap(CHART_W, CHART_H_COMPACT, Bitmap.Config.ARGB_8888);
         chart.draw(new Canvas(chartBmp));
 
         // Now the ViewPortHandler's content rect is populated.
@@ -446,7 +458,7 @@ public class TremorReportGenerator {
         float x5_5 = cLeft + (HIST_DIVIDER_HZ - HIST_X_MIN) * ppu;
 
         // Pass 2: compose final bitmap → white → zones → chart (chart has transparent bg)
-        Bitmap bmp = Bitmap.createBitmap(CHART_W, CHART_H, Bitmap.Config.ARGB_8888);
+        Bitmap bmp = Bitmap.createBitmap(CHART_W, CHART_H_COMPACT, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bmp);
         canvas.drawColor(Color.WHITE);
 
@@ -509,6 +521,7 @@ public class TremorReportGenerator {
             }
         });
         chart.getXAxis().setLabelRotationAngle(90f);
+        chart.getXAxis().setTextSize(7f);   // smaller time labels
         chart.getXAxis().enableGridDashedLine(10f, 5f, 0f);
         chart.getXAxis().setGridColor(Color.argb(77, 0, 0, 0)); // alpha ≈ 0.3
 
@@ -538,17 +551,23 @@ public class TremorReportGenerator {
         chart.getLegend().setCustom(legendEntries);
         chart.getLegend().setEnabled(true);
         chart.getLegend().setHorizontalAlignment(Legend.LegendHorizontalAlignment.CENTER);
+        chart.getLegend().setTextSize(8f);  // smaller legend text
 
         return chartToBitmap(chart, Color.WHITE);
     }
 
     /** Measure, layout, and draw a chart to a Bitmap of size CHART_W × CHART_H. */
     private static Bitmap chartToBitmap(View chart, int bgColor) {
+        return chartToBitmap(chart, bgColor, CHART_W, CHART_H);
+    }
+
+    /** Measure, layout, and draw a chart to a Bitmap of explicit dimensions. */
+    private static Bitmap chartToBitmap(View chart, int bgColor, int cw, int ch) {
         chart.measure(
-                View.MeasureSpec.makeMeasureSpec(CHART_W, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(CHART_H, View.MeasureSpec.EXACTLY));
-        chart.layout(0, 0, CHART_W, CHART_H);
-        Bitmap bmp = Bitmap.createBitmap(CHART_W, CHART_H, Bitmap.Config.ARGB_8888);
+                View.MeasureSpec.makeMeasureSpec(cw, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(ch, View.MeasureSpec.EXACTLY));
+        chart.layout(0, 0, cw, ch);
+        Bitmap bmp = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bmp);
         canvas.drawColor(bgColor);
         chart.draw(canvas);
@@ -812,10 +831,10 @@ public class TremorReportGenerator {
     }
 
     private static void drawEventDetailsTable(PdfWriter w, List<TremorEvent> events) {
-        // Columns: #(30), Start Time(80), Freq Hz(70), Max Disp cm(90), Grade(70) = 340
+        // Columns: #(30), Start Time(80), Freq Hz(70), Median Disp cm(90), Grade(70) = 340
         float scale = (float) CONTENT_W / 340f;
         final float[] cw = {30*scale, 80*scale, 70*scale, 90*scale, 70*scale};
-        final String[] headers = {"#", "Start Time", "Freq (Hz)", "Max Disp (cm)", "Grade"};
+        final String[] headers = {"#", "Start Time", "Freq (Hz)", "Median Disp (cm)", "Grade"};
         final float rowH = 18f;
         final float startX = ML;
 
@@ -870,7 +889,7 @@ public class TremorReportGenerator {
                     String.valueOf(e.eventNum),
                     e.startTime,
                     String.format(Locale.US, "%.2f", e.dominantFreqHz),
-                    String.format(Locale.US, "%.3f", e.maxXp2pCm),
+                    String.format(Locale.US, "%.3f", e.medianXp2pCm),
                     e.grade
             };
             float tx = startX + 4;
