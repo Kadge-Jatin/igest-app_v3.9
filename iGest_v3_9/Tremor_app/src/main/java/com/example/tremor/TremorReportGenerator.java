@@ -62,28 +62,28 @@ public class TremorReportGenerator {
 
     // ── Inner data classes ─────────────────────────────────────────────────────
 
-    static class TremorEvent {
-        int eventNum;
-        String startTime;   // HH:mm:ss
-        String endTime;
-        double dominantFreqHz;
-        int windowCount;
-        double medianXp2pCm;
-        double percentile90Xp2pCm;
-        double maxXp2pCm;
-        String grade;       // Normal / Mild / Moderate / Severe
+    public static class TremorEvent {
+        public int eventNum;
+        public String startTime;   // HH:mm:ss
+        public String endTime;
+        public double dominantFreqHz;
+        public int windowCount;
+        public double medianXp2pCm;
+        public double percentile90Xp2pCm;
+        public double maxXp2pCm;
+        public String grade;       // Normal / Mild / Moderate / Severe
     }
 
-    static class DayStats {
-        String date;
-        int totalEvents;
-        double meanDominantFreqHz;
-        double avgMedianDisplacementCm;
-        int countParkinsonian;    // 3–5 Hz inclusive
-        double percentParkinsonian;
-        int countEssential;       // 6–12 Hz inclusive
-        double percentEssential;
-        int countNormal, countMild, countModerate, countSevere;
+    public static class DayStats {
+        public String date;
+        public int totalEvents;
+        public double meanDominantFreqHz;
+        public double avgMedianDisplacementCm;
+        public int countParkinsonian;    // 3–5 Hz inclusive
+        public double percentParkinsonian;
+        public int countEssential;       // 6–12 Hz inclusive
+        public double percentEssential;
+        public int countNormal, countMild, countModerate, countSevere;
     }
 
     // ── PDF layout constants ───────────────────────────────────────────────────
