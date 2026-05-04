@@ -43,6 +43,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * TremorReportGenerator – generates a multi-page A4 PDF report for a date range.
@@ -653,11 +656,39 @@ public class TremorReportGenerator {
         }
     }
 
+    // ── Main-thread chart rendering helper ────────────────────────────────────
+
+    /**
+     * Runs {@code task} on the main (UI) thread and returns the resulting {@link Bitmap}.
+     * MPAndroidChart views create a {@code Handler} internally, so they must be
+     * instantiated and drawn on a thread that has a {@code Looper}.
+     */
+    private static Bitmap renderOnMainThread(Callable<Bitmap> task) throws Exception {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return task.call();
+        }
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<Bitmap> result = new AtomicReference<>();
+        AtomicReference<Exception> error = new AtomicReference<>();
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                result.set(task.call());
+            } catch (Exception e) {
+                error.set(e);
+            } finally {
+                latch.countDown();
+            }
+        });
+        latch.await();
+        if (error.get() != null) throw error.get();
+        return result.get();
+    }
+
     // ── Per-date section ───────────────────────────────────────────────────────
 
     private static void drawDateSection(Context ctx, PdfWriter w,
                                         String date, List<TremorEvent> events,
-                                        DayStats stats, String username) {
+                                        DayStats stats, String username) throws Exception {
         Canvas cv = w.canvas;
 
         // ① Header strip (page is fresh, cv is valid)
@@ -669,17 +700,17 @@ public class TremorReportGenerator {
 
         // ③ Grade Distribution chart
         drawSectionLabel(w, "\u2461 Tremor Grade Distribution");
-        Bitmap gradeBmp = renderGradeDistributionChart(ctx, events);
+        Bitmap gradeBmp = renderOnMainThread(() -> renderGradeDistributionChart(ctx, events));
         drawChartBitmap(w, gradeBmp);
 
         // ④ Frequency Histogram
         drawSectionLabel(w, "\u2462 Dominant Frequency Distribution");
-        Bitmap freqBmp = renderFrequencyHistogramChart(ctx, events);
+        Bitmap freqBmp = renderOnMainThread(() -> renderFrequencyHistogramChart(ctx, events));
         drawChartBitmap(w, freqBmp);
 
         // ⑤ Event Timeline
         drawSectionLabel(w, "\u2463 Event Timeline");
-        Bitmap timelineBmp = renderEventTimelineChart(ctx, events);
+        Bitmap timelineBmp = renderOnMainThread(() -> renderEventTimelineChart(ctx, events));
         drawChartBitmap(w, timelineBmp);
 
         // ⑥ Event Details Table
