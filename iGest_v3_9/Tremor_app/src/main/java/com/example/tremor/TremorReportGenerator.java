@@ -831,16 +831,16 @@ public class TremorReportGenerator {
     }
 
     private static void drawEventDetailsTable(PdfWriter w, List<TremorEvent> events) {
-        // Columns: #(30), Start Time(80), Freq Hz(70), Median Disp cm(90), Grade(70) = 340
-        float scale = (float) CONTENT_W / 340f;
-        final float[] cw = {30*scale, 80*scale, 70*scale, 90*scale, 70*scale};
-        final String[] headers = {"#", "Start Time", "Freq (Hz)", "Median Disp (cm)", "Grade"};
+        // 4 columns: #(40), Start Time(90), Freq Hz(80), Grade(70) = 280 raw units
+        float scale = (float) CONTENT_W / 280f;
+        final float[] cw = {40*scale, 90*scale, 80*scale, 70*scale};
+        final String[] headers = {"#", "Start Time", "Freq (Hz)", "Grade"};
         final float rowH = 18f;
         final float startX = ML;
 
         Paint headerBg  = makeFill(Color.parseColor("#37474F"));
-        Paint headerTxt = makePaint(true, 11f, Color.WHITE, Paint.Align.LEFT);
-        Paint rowTxt    = makePaint(false, 10f, Color.BLACK, Paint.Align.LEFT);
+        Paint headerTxt = makePaint(true, 11f, Color.WHITE, Paint.Align.CENTER);
+        Paint rowTxt    = makePaint(false, 10f, Color.BLACK, Paint.Align.CENTER);
         Paint rowAltBg  = makeFill(Color.parseColor("#F5F5F5"));
 
         final int[] gradeColors = {
@@ -850,15 +850,15 @@ public class TremorReportGenerator {
                 Color.parseColor("#B71C1C")
         };
 
-        // Helper: draw header row (inlined to avoid java.util.function.Consumer API-24 requirement)
+        // Draw header row – centered in each column
         w.ensureSpace(rowH * 2 + 16);
         {
             Canvas hcv = w.canvas;
             hcv.drawRect(startX, w.y, startX + CONTENT_W, w.y + rowH, headerBg);
-            float tx = startX + 4;
+            float tx = startX;
             for (int c = 0; c < headers.length; c++) {
                 float by = w.y + rowH / 2f - (headerTxt.ascent() + headerTxt.descent()) / 2f;
-                hcv.drawText(headers[c], tx, by, headerTxt);
+                hcv.drawText(headers[c], tx + cw[c] / 2f, by, headerTxt);
                 tx += cw[c];
             }
             w.y += rowH;
@@ -870,10 +870,10 @@ public class TremorReportGenerator {
                 // Re-draw header on new page
                 Canvas hcv = w.canvas;
                 hcv.drawRect(startX, w.y, startX + CONTENT_W, w.y + rowH, headerBg);
-                float tx = startX + 4;
+                float tx = startX;
                 for (int c = 0; c < headers.length; c++) {
                     float by = w.y + rowH / 2f - (headerTxt.ascent() + headerTxt.descent()) / 2f;
-                    hcv.drawText(headers[c], tx, by, headerTxt);
+                    hcv.drawText(headers[c], tx + cw[c] / 2f, by, headerTxt);
                     tx += cw[c];
                 }
                 w.y += rowH;
@@ -889,18 +889,17 @@ public class TremorReportGenerator {
                     String.valueOf(e.eventNum),
                     e.startTime,
                     String.format(Locale.US, "%.2f", e.dominantFreqHz),
-                    String.format(Locale.US, "%.3f", e.medianXp2pCm),
                     e.grade
             };
-            float tx = startX + 4;
+            float tx = startX;
             for (int c = 0; c < cells.length; c++) {
                 float by = w.y + rowH / 2f - (rowTxt.ascent() + rowTxt.descent()) / 2f;
-                if (c == 4) {
+                if (c == 3) {
                     Paint gp = makePaint(false, 10f, gradeColors[Math.max(0, gradeIndex(e.grade))],
-                            Paint.Align.LEFT);
-                    cv.drawText(cells[c], tx, by, gp);
+                            Paint.Align.CENTER);
+                    cv.drawText(cells[c], tx + cw[c] / 2f, by, gp);
                 } else {
-                    cv.drawText(cells[c], tx, by, rowTxt);
+                    cv.drawText(cells[c], tx + cw[c] / 2f, by, rowTxt);
                 }
                 tx += cw[c];
             }
