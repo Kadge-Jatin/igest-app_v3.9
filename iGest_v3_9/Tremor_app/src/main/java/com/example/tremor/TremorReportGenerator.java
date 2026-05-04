@@ -45,6 +45,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -679,7 +680,9 @@ public class TremorReportGenerator {
                 latch.countDown();
             }
         });
-        latch.await();
+        if (!latch.await(10, TimeUnit.SECONDS)) {
+            throw new Exception("Chart rendering timed out on main thread");
+        }
         if (error.get() != null) throw error.get();
         return result.get();
     }
